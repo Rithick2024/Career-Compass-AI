@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+build/
+.vite/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+
+# Vite
+vite.config.*.timestamp-*
+
+# IDE
+.vscode/
+.idea/
+
+# Bolt
+.bolt/
+
+# Logs
+*.log

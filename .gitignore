@@ -1,0 +1,94 @@
+# ==========================================
+# Career Compass AI - Root Git Ignore
+# ==========================================
+
+# ------------------------------
+# Environment / Secrets
+# ------------------------------
+.env
+.env.*
+!.env.example
+
+# ------------------------------
+# OS / Editor
+# ------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ------------------------------
+# Logs
+# ------------------------------
+*.log
+logs/
+
+# ------------------------------
+# Temporary files
+# ------------------------------
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ------------------------------
+# Python
+# ------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ------------------------------
+# Node / Frontend
+# ------------------------------
+node_modules/
+.npm/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.vite/
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# ------------------------------
+# Frontend tooling
+# ------------------------------
+frontend/.bolt/
+
+# ------------------------------
+# Backend tooling
+# ------------------------------
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+
+# ------------------------------
+# Database
+# ------------------------------
+*.db
+*.sqlite
+*.sqlite3
+
+# ------------------------------
+# Coverage
+# ------------------------------
+coverage/

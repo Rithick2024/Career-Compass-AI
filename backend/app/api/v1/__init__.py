@@ -1,0 +1,17 @@
+"""
+Aggregates all v1 routers into a single `api_router`.
+
+Further feature-module routers (placements, etc.) will be included
+here in later tasks.
+"""
+
+from fastapi import APIRouter
+
+from app.api.v1.health import router as health_router
+from app.modules.auth.router import router as auth_router
+from app.modules.students.router import router as students_router
+
+api_router = APIRouter()
+api_router.include_router(health_router)
+api_router.include_router(auth_router)
+api_router.include_router(students_router)
