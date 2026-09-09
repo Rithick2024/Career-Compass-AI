@@ -8,6 +8,8 @@ import {
   Circle,
   CircleDot,
   CircleCheckBig,
+  Check,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader, PageContainer, LoadingSkeleton } from '@/components/common/PageHeader';
@@ -25,6 +27,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -35,8 +50,9 @@ import {
 import { EmptyState } from '@/components/common/EmptyState';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
-import { initialSkills } from '../data/profile-skills-resume';
 import type { Skill, Proficiency, SkillCategory } from '../types';
+import { skillsService } from '../services/skills.service';
+import type { SkillOut, BackendProficiency } from '../types/api';
 
 const proficiencyConfig: Record<Proficiency, { value: number; color: string; icon: React.ElementType }> = {
   Beginner: { value: 33, color: 'text-amber-600 dark:text-amber-400', icon: Circle },
@@ -50,26 +66,51 @@ const proficiencyBadge: Record<Proficiency, string> = {
   Advanced: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
 };
 
-const categories: SkillCategory[] = [
-  'Programming Languages',
-  'Frontend',
-  'Backend',
-  'Database',
-  'Cloud',
-  'AI / ML',
-  'Tools',
-];
+// Categories constant removed as it's extracted dynamically
+
+const mapBackendProficiency = (backendProficiency: string): Proficiency => {
+  if (backendProficiency === 'advanced') return 'Advanced';
+  if (backendProficiency === 'intermediate') return 'Intermediate';
+  return 'Beginner';
+};
+
+const mapFrontendProficiency = (frontendProficiency: Proficiency): BackendProficiency => {
+  if (frontendProficiency === 'Advanced') return 'advanced';
+  if (frontendProficiency === 'Intermediate') return 'intermediate';
+  return 'beginner';
+};
 
 export default function StudentSkills() {
   const [loading, setLoading] = useState(true);
-  const [skills, setSkills] = useState<Skill[]>(initialSkills);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [catalogSkills, setCatalogSkills] = useState<SkillOut[]>([]);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newSkill, setNewSkill] = useState({ name: '', category: 'Frontend' as SkillCategory, proficiency: 'Beginner' as Proficiency });
+  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [newSkill, setNewSkill] = useState({ skillId: '', proficiency: 'Beginner' as Proficiency });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
+    const fetchSkills = async () => {
+      try {
+        const [catalog, mySkills] = await Promise.all([
+          skillsService.getCatalogSkills(),
+          skillsService.getMySkills()
+        ]);
+        setCatalogSkills(catalog);
+        setSkills(mySkills.map(s => ({
+          id: s.skill.id,
+          name: s.skill.name,
+          category: s.skill.category || 'Other',
+          proficiency: mapBackendProficiency(s.proficiency)
+        })));
+      } catch {
+        toast.error('Failed to load skills.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSkills();
   }, []);
 
   const stats = useMemo(() => {
@@ -87,30 +128,49 @@ export default function StudentSkills() {
 
   const grouped = useMemo(() => {
     const map = new Map<SkillCategory, Skill[]>();
-    for (const cat of categories) {
+    const allCategories = Array.from(new Set(filtered.map(s => s.category)));
+    for (const cat of allCategories) {
       const items = filtered.filter((s) => s.category === cat);
       if (items.length > 0) map.set(cat, items);
     }
     return map;
   }, [filtered]);
 
-  const handleRemove = (id: string) => {
-    setSkills((prev) => prev.filter((s) => s.id !== id));
-    toast.success('The skill has been removed from your profile.');
+  const handleRemove = async (id: number) => {
+    try {
+      await skillsService.removeSkill(id);
+      setSkills((prev) => prev.filter((s) => s.id !== id));
+      toast.success('The skill has been removed from your profile.');
+    } catch {
+      toast.error('Failed to remove skill.');
+    }
   };
 
-  const handleAdd = () => {
-    if (!newSkill.name.trim()) return;
-    const skill: Skill = {
-      id: `SKL-${String(skills.length + 1).padStart(3, '0')}`,
-      name: newSkill.name.trim(),
-      category: newSkill.category,
-      proficiency: newSkill.proficiency,
-    };
-    setSkills((prev) => [...prev, skill]);
-    setNewSkill({ name: '', category: 'Frontend', proficiency: 'Beginner' });
-    setDialogOpen(false);
-    toast.success(`${skill.name} has been added to your profile.`);
+  const handleAdd = async () => {
+    if (!newSkill.skillId) return;
+    setIsSubmitting(true);
+    try {
+      const added = await skillsService.addSkill({
+        skill_id: parseInt(newSkill.skillId, 10),
+        proficiency: mapFrontendProficiency(newSkill.proficiency)
+      });
+      const skill: Skill = {
+        id: added.skill.id,
+        name: added.skill.name,
+        category: added.skill.category || 'Other',
+        proficiency: mapBackendProficiency(added.proficiency),
+      };
+      setSkills((prev) => [...prev, skill]);
+      setNewSkill({ skillId: '', proficiency: 'Beginner' });
+      setDialogOpen(false);
+      toast.success(`${skill.name} has been added to your profile.`);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } };
+      const msg = err.response?.data?.detail || 'Failed to add skill.';
+      toast.error(typeof msg === 'string' ? msg : 'Failed to add skill.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const statCards = [
@@ -272,28 +332,56 @@ export default function StudentSkills() {
             <DialogDescription>Add a technical skill with its category and proficiency level.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
+            <div className="space-y-2 flex flex-col">
               <Label htmlFor="skill-name">Skill Name</Label>
-              <Input
-                id="skill-name"
-                placeholder="e.g., Rust, Kubernetes, GraphQL"
-                value={newSkill.name}
-                onChange={(e) => setNewSkill((p) => ({ ...p, name: e.target.value }))}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="skill-category">Category</Label>
-              <Select value={newSkill.category} onValueChange={(v) => setNewSkill((p) => ({ ...p, category: v as SkillCategory }))}>
-                <SelectTrigger id="skill-category">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="skill-name"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={comboboxOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    {newSkill.skillId
+                      ? catalogSkills.find((cat) => cat.id.toString() === newSkill.skillId)?.name
+                      : "Select a skill from catalog..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent 
+                  className="p-0" 
+                  style={{ width: 'var(--radix-popover-trigger-width)' }}
+                  align="start"
+                >
+                  <Command>
+                    <CommandInput placeholder="Search skills..." />
+                    <CommandList>
+                      <CommandEmpty>No skill found.</CommandEmpty>
+                      <CommandGroup>
+                        {catalogSkills.map((cat) => (
+                          <CommandItem
+                            key={cat.id}
+                            value={cat.name}
+                            onSelect={() => {
+                              setNewSkill((p) => ({ ...p, skillId: cat.id.toString() }));
+                              setComboboxOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                newSkill.skillId === cat.id.toString() ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {cat.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-2">
               <Label htmlFor="skill-proficiency">Proficiency</Label>
@@ -310,10 +398,10 @@ export default function StudentSkills() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={!newSkill.name.trim()}>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+            <Button onClick={handleAdd} disabled={!newSkill.skillId || isSubmitting}>
               <Plus className="mr-1.5 h-4 w-4" />
-              Add Skill
+              {isSubmitting ? 'Adding...' : 'Add Skill'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Menu, Search, Bell, Moon, Sun, Settings, LogOut, User, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import {
 import { Breadcrumbs } from './Breadcrumbs';
 import { useTheme } from '@/lib/use-theme';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { studentService } from '@/features/student/services/student.service';
 
 type TopNavbarProps = {
   onMenuClick: () => void;
@@ -34,12 +36,24 @@ export function TopNavbar({
 }: TopNavbarProps) {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const [profileName, setProfileName] = useState('');
+
+  useEffect(() => {
+    if (user?.role === 'student') {
+      studentService.getMyProfile()
+        .then((p) => setProfileName(p.full_name || user.email))
+        .catch(console.error);
+    }
+  }, [user]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+
+  const finalUserName = profileName || userName;
+  const finalAvatarText = profileName ? profileName.substring(0, 2).toUpperCase() : avatarText;
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-card/80 px-4 backdrop-blur-lg md:px-6">
@@ -88,11 +102,11 @@ export function TopNavbar({
             <Button variant="ghost" className="flex items-center gap-2 px-2 hover:bg-secondary">
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                  {avatarText}
+                  {finalAvatarText}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden text-left lg:block">
-                <p className="text-sm font-medium leading-tight">{userName}</p>
+                <p className="text-sm font-medium leading-tight">{finalUserName}</p>
                 <p className="text-[11px] text-muted-foreground">{userRole}</p>
               </div>
               <ChevronDown className="hidden h-4 w-4 text-muted-foreground lg:block" />

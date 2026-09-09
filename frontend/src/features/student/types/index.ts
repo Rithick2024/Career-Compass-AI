@@ -1,16 +1,9 @@
 export type Proficiency = 'Beginner' | 'Intermediate' | 'Advanced';
 
-export type SkillCategory =
-  | 'Programming Languages'
-  | 'Frontend'
-  | 'Backend'
-  | 'Database'
-  | 'Cloud'
-  | 'AI / ML'
-  | 'Tools';
+export type SkillCategory = string;
 
 export type Skill = {
-  id: string;
+  id: number;
   name: string;
   category: SkillCategory;
   proficiency: Proficiency;

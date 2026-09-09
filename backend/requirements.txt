@@ -14,6 +14,7 @@ email-validator==2.2.0
 # Authentication
 bcrypt==4.2.1
 pyjwt==2.10.1
+python-multipart==0.0.32  # required by OAuth2PasswordRequestForm (used in /auth/swagger-login)
 
 # Utilities
 python-dotenv==1.0.1

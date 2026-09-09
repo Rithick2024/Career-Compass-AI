@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AreaChart,
@@ -39,6 +40,8 @@ import {
   applicationTrend,
   jobRecommendations,
 } from '@/features/student/data/mock-data';
+import { studentService } from '@/features/student/services/student.service';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 const eventTypeConfig = {
   interview: { icon: Video, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-100 dark:bg-violet-900/30' },
@@ -49,7 +52,18 @@ const eventTypeConfig = {
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [firstName, setFirstName] = useState('');
   const readinessScore = 78;
+
+  useEffect(() => {
+    studentService.getMyProfile()
+      .then((p) => {
+        const name = p.full_name || user?.email || 'Student';
+        setFirstName(name.split(' ')[0]);
+      })
+      .catch(console.error);
+  }, [user]);
 
   const greeting = (() => {
     const hour = new Date().getHours();
@@ -62,7 +76,7 @@ export default function StudentDashboard() {
     <AppLayout role="student" userName="Aarav Sharma" userRole="Student" avatarText="AS">
       <PageContainer>
         <PageHeader
-          title={`${greeting}, Aarav`}
+          title={`${greeting}, ${firstName || 'Student'}`}
           description="Here's what's happening with your placement journey today."
           action={
             <Button onClick={() => navigate('/student/jobs')}>

@@ -18,3 +18,22 @@ class RoleEnum(str, Enum):
 
     STUDENT = "student"
     ADMIN = "admin"
+
+
+class ProficiencyLevel(str, Enum):
+    """
+    Self-reported skill proficiency (used on `student_skills.proficiency`).
+
+    Three levels, matching the existing frontend's confirmed contract
+    (Beginner/Intermediate/Advanced — no Expert level exists in the
+    UI). An earlier version of this backend included a fourth
+    `EXPERT` value before the frontend contract was inspected; it was
+    removed via a corrective migration
+    (`alembic/versions/38f0da1163aa_remove_expert_proficiency_level.py`)
+    rather than rewriting the migration that first created this enum.
+    See docs/skills-module.md.
+    """
+
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"

@@ -30,3 +30,29 @@ export interface StudentProfileUpdateRequest {
   linkedin_url?: string | null;
   github_url?: string | null;
 }
+
+export type BackendProficiency = 'beginner' | 'intermediate' | 'advanced';
+
+export interface SkillOut {
+  id: number;
+  name: string;
+  category: string | null;
+}
+
+export interface StudentSkillResponse {
+  id: number;
+  student_id: number;
+  skill: SkillOut;
+  proficiency: BackendProficiency;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AddStudentSkillRequest {
+  skill_id: number;
+  proficiency: BackendProficiency;
+}
+
+export interface UpdateStudentSkillProficiencyRequest {
+  proficiency: BackendProficiency;
+}

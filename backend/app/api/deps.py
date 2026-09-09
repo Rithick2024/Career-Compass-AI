@@ -19,6 +19,8 @@ from app.core.exceptions import ForbiddenError
 from app.db.session import get_db
 from app.modules.auth.models import User
 from app.modules.auth.service import AuthService
+from app.modules.resumes.service import ResumeService
+from app.modules.skills.service import SkillService
 from app.modules.students.service import StudentService
 from app.shared.enums import RoleEnum
 
@@ -96,6 +98,22 @@ StudentServiceDep = Annotated[StudentService, Depends(get_student_service)]
 RequireStudent = Annotated[User, Depends(require_role(RoleEnum.STUDENT))]
 
 
+# --- Skill service ---
+def get_skill_service(db: DBSession) -> SkillService:
+    return SkillService(db)
+
+
+SkillServiceDep = Annotated[SkillService, Depends(get_skill_service)]
+
+
+# --- Resume service ---
+def get_resume_service(db: DBSession) -> ResumeService:
+    return ResumeService(db)
+
+
+ResumeServiceDep = Annotated[ResumeService, Depends(get_resume_service)]
+
+
 __all__ = [
     "DBSession",
     "AppSettings",
@@ -109,4 +127,8 @@ __all__ = [
     "StudentServiceDep",
     "get_student_service",
     "RequireStudent",
+    "SkillServiceDep",
+    "get_skill_service",
+    "ResumeServiceDep",
+    "get_resume_service",
 ]
