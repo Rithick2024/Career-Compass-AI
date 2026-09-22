@@ -18,16 +18,21 @@ from typing import List
 
 from fastapi import APIRouter, status
 
-from app.api.deps import RequireStudent, SkillServiceDep
+from app.api.deps import RequireStaff, RequireStudent, SkillServiceDep
 from app.modules.skills.schemas import (
     AddStudentSkillRequest,
+    SkillCreateRequest,
     SkillOut,
+    SkillResponse,
+    SkillStatusUpdateRequest,
+    SkillUpdateRequest,
     StudentSkillResponse,
     UpdateStudentSkillProficiencyRequest,
 )
 
 router = APIRouter(prefix="/skills", tags=["Skills"])
 student_skills_router = APIRouter(prefix="/students/me/skills", tags=["Student Skills"])
+staff_skills_router = APIRouter(prefix="/staff/skills", tags=["Staff Skills"])
 
 
 @router.get("", response_model=List[SkillOut], status_code=status.HTTP_200_OK)
@@ -79,3 +84,45 @@ async def remove_my_skill(
 ) -> None:
     """Remove a skill from the authenticated student's profile."""
     await skill_service.remove_skill(current_user.id, skill_id)
+
+
+# --- Staff Skill Management Endpoints ---
+
+@staff_skills_router.get("", response_model=List[SkillResponse], status_code=status.HTTP_200_OK)
+async def list_staff_skills(
+    current_user: RequireStaff, skill_service: SkillServiceDep
+) -> List[SkillResponse]:
+    """Return all skills for staff catalog management."""
+    return await skill_service.list_all_skills()
+
+
+@staff_skills_router.post("", response_model=SkillResponse, status_code=status.HTTP_201_CREATED)
+async def create_skill(
+    data: SkillCreateRequest,
+    current_user: RequireStaff,
+    skill_service: SkillServiceDep,
+) -> SkillResponse:
+    """Create a new catalog skill."""
+    return await skill_service.create_skill(data)
+
+
+@staff_skills_router.patch("/{skill_id}", response_model=SkillResponse, status_code=status.HTTP_200_OK)
+async def update_skill(
+    skill_id: int,
+    data: SkillUpdateRequest,
+    current_user: RequireStaff,
+    skill_service: SkillServiceDep,
+) -> SkillResponse:
+    """Update a skill's name or category."""
+    return await skill_service.update_skill(skill_id, data)
+
+
+@staff_skills_router.patch("/{skill_id}/status", response_model=SkillResponse, status_code=status.HTTP_200_OK)
+async def update_skill_status(
+    skill_id: int,
+    data: SkillStatusUpdateRequest,
+    current_user: RequireStaff,
+    skill_service: SkillServiceDep,
+) -> SkillResponse:
+    """Update a skill's active status."""
+    return await skill_service.update_skill_status(skill_id, data)

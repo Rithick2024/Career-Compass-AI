@@ -66,9 +66,9 @@ def require_role(*allowed_roles: RoleEnum) -> Callable[[User], User]:
     Dependency factory for role-based authorization.
 
     Usage in a router:
-        @router.get("/admin-only", dependencies=[Depends(require_role(RoleEnum.ADMIN))])
+        @router.get("/staff-only", dependencies=[Depends(require_role(RoleEnum.STAFF))])
         # or, to also use the user object:
-        async def handler(user: Annotated[User, Depends(require_role(RoleEnum.ADMIN))]):
+        async def handler(user: Annotated[User, Depends(require_role(RoleEnum.STAFF))]):
             ...
     """
 
@@ -92,10 +92,11 @@ StudentServiceDep = Annotated[StudentService, Depends(get_student_service)]
 
 # Reuses the existing require_role factory rather than bare
 # get_current_user: /students/me is specifically a *student's* own
-# profile, so a non-student (e.g. admin) authenticated user shouldn't
+# profile, so a non-student (e.g. staff) authenticated user shouldn't
 # have an empty profile transparently provisioned for them just by
 # hitting the endpoint.
 RequireStudent = Annotated[User, Depends(require_role(RoleEnum.STUDENT))]
+RequireStaff = Annotated[User, Depends(require_role(RoleEnum.STAFF))]
 
 
 # --- Skill service ---
@@ -127,6 +128,7 @@ __all__ = [
     "StudentServiceDep",
     "get_student_service",
     "RequireStudent",
+    "RequireStaff",
     "SkillServiceDep",
     "get_skill_service",
     "ResumeServiceDep",

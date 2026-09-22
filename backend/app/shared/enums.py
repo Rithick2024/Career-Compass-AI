@@ -17,7 +17,7 @@ class RoleEnum(str, Enum):
     """Application-wide user roles."""
 
     STUDENT = "student"
-    ADMIN = "admin"
+    STAFF = "staff"
 
 
 class ProficiencyLevel(str, Enum):

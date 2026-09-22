@@ -7,7 +7,7 @@ directly from a router.
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.shared.enums import ProficiencyLevel
 
@@ -15,10 +15,7 @@ from app.shared.enums import ProficiencyLevel
 class SkillOut(BaseModel):
     """
     Minimal skill representation — used both for the platform catalog
-    and nested inside a student's own skill list. Deliberately
-    excludes `created_at`/`updated_at` (same minimalism as
-    `DepartmentOut` in the student module — those timestamps track the
-    catalog entry itself, not something an API consumer needs).
+    and nested inside a student's own skill list.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -26,6 +23,66 @@ class SkillOut(BaseModel):
     id: int
     name: str
     category: Optional[str] = None
+    is_active: bool = True
+
+
+class SkillResponse(BaseModel):
+    """Full skill representation for staff and catalog management."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    category: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class SkillCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    category: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Skill name cannot be blank.")
+        return value
+
+    @field_validator("category")
+    @classmethod
+    def clean_category(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None:
+            value = value.strip()
+            return value if value else None
+        return None
+
+
+class SkillUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    category: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Skill name cannot be blank.")
+        return value
+
+    @field_validator("category")
+    @classmethod
+    def clean_category(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None:
+            value = value.strip()
+            return value if value else None
+        return None
+
+
+class SkillStatusUpdateRequest(BaseModel):
+    is_active: bool
 
 
 class StudentSkillResponse(BaseModel):

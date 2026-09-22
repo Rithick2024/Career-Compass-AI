@@ -8,10 +8,17 @@ repository respectively).
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ValidationError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.modules.students.models import Student
 from app.modules.students.repository import StudentRepository
-from app.modules.students.schemas import StudentProfileResponse, StudentProfileUpdateRequest
+from app.modules.students.schemas import (
+    DepartmentCreateRequest,
+    DepartmentResponse,
+    DepartmentStatusUpdateRequest,
+    DepartmentUpdateRequest,
+    StudentProfileResponse,
+    StudentProfileUpdateRequest,
+)
 
 # Fields whose Pydantic type (HttpUrl) needs an explicit str() cast
 # before it can be assigned to the corresponding String column.
@@ -30,27 +37,10 @@ class StudentService:
         self._repo = StudentRepository(db)
 
     async def _get_or_create_profile(self, user_id: int) -> Student:
-        """
-        Resolve the current user's student profile, creating an empty
-        one on first access.
-
-        There is no separate "create profile" endpoint in this task's
-        scope, and a user's profile is implicitly tied to their account
-        rather than something they explicitly provision — so GET and
-        PATCH both transparently provision an empty row (all fields
-        null except the user link) the first time a student reaches
-        their profile, rather than 404ing until some other action
-        creates it first. See docs/student-module.md for the reasoning
-        and the alternative considered (404 until first PATCH).
-        """
         student = await self._repo.get_by_user_id(user_id)
         if student is None:
             student = await self._repo.create_for_user(user_id)
             await self._db.commit()
-            # `department` is trivially None on a just-created row, but
-            # re-fetching keeps this function's return value consistent
-            # with the update path below (always a query result, never
-            # a manually-assembled object).
             student = await self._repo.get_by_user_id(user_id)
         return student
 
@@ -63,17 +53,13 @@ class StudentService:
     ) -> StudentProfileResponse:
         student = await self._get_or_create_profile(user_id)
 
-        # Only fields actually present in the request are applied —
-        # this is what makes a PATCH partial rather than a full
-        # overwrite. A field explicitly sent as null (e.g. clearing
-        # `phone`) is still "set" and is applied as null.
         updates = data.model_dump(exclude_unset=True)
 
         if "department_id" in updates and updates["department_id"] is not None:
             department = await self._repo.get_department_by_id(updates["department_id"])
-            if department is None:
+            if department is None or not department.is_active:
                 raise ValidationError(
-                    "The specified department does not exist.",
+                    "The specified department does not exist or is inactive.",
                     error_code="INVALID_DEPARTMENT",
                 )
 
@@ -83,13 +69,65 @@ class StudentService:
             setattr(student, field, value)
 
         await self._db.commit()
-
-        # Without this, re-fetching below can return the SAME Python
-        # object from SQLAlchemy's identity map with its `department`
-        # relationship still holding its pre-update value (e.g. None) —
-        # a plain re-SELECT does not, by itself, force an already-loaded
-        # relationship to reload just because its FK column changed.
         self._db.expire(student)
 
         student = await self._repo.get_by_user_id(user_id)
         return StudentProfileResponse.model_validate(student)
+
+    # --- Department Management ---
+
+    async def list_active_departments(self) -> list[DepartmentResponse]:
+        departments = await self._repo.list_active_departments()
+        return [DepartmentResponse.model_validate(d) for d in departments]
+
+    async def list_all_departments(self) -> list[DepartmentResponse]:
+        departments = await self._repo.list_all_departments()
+        return [DepartmentResponse.model_validate(d) for d in departments]
+
+    async def create_department(self, data: DepartmentCreateRequest) -> DepartmentResponse:
+        clean_name = data.name.strip()
+        existing = await self._repo.get_department_by_name(clean_name)
+        if existing is not None:
+            raise ConflictError(
+                "A department with this name already exists.",
+                error_code="DEPARTMENT_ALREADY_EXISTS",
+            )
+        dept = await self._repo.create_department(clean_name)
+        await self._db.commit()
+        return DepartmentResponse.model_validate(dept)
+
+    async def update_department(
+        self, department_id: int, data: DepartmentUpdateRequest
+    ) -> DepartmentResponse:
+        dept = await self._repo.get_department_by_id(department_id)
+        if dept is None:
+            raise NotFoundError(
+                "The specified department does not exist.",
+                error_code="DEPARTMENT_NOT_FOUND",
+            )
+
+        clean_name = data.name.strip()
+        existing = await self._repo.get_department_by_name(clean_name)
+        if existing is not None and existing.id != department_id:
+            raise ConflictError(
+                "A department with this name already exists.",
+                error_code="DEPARTMENT_ALREADY_EXISTS",
+            )
+
+        updated_dept = await self._repo.update_department(dept, clean_name)
+        await self._db.commit()
+        return DepartmentResponse.model_validate(updated_dept)
+
+    async def update_department_status(
+        self, department_id: int, data: DepartmentStatusUpdateRequest
+    ) -> DepartmentResponse:
+        dept = await self._repo.get_department_by_id(department_id)
+        if dept is None:
+            raise NotFoundError(
+                "The specified department does not exist.",
+                error_code="DEPARTMENT_NOT_FOUND",
+            )
+
+        updated_dept = await self._repo.update_department_status(dept, data.is_active)
+        await self._db.commit()
+        return DepartmentResponse.model_validate(updated_dept)

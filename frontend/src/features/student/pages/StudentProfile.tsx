@@ -37,14 +37,7 @@ import { studentService } from '../services/student.service';
 import { StudentProfileUpdateRequest } from '../types/api';
 import { useAuth } from '@/features/auth/context/AuthContext';
 
-const DEPARTMENTS = [
-  { id: 1, name: "Computer Applications" },
-  { id: 2, name: "Computer Science and Engineering" },
-  { id: 3, name: "Information Technology" },
-  { id: 4, name: "Electronics and Communication Engineering" },
-  { id: 5, name: "Mechanical Engineering" },
-  { id: 6, name: "Business Administration" },
-];
+import { departmentService, Department } from '@/features/staff/services/department.service';
 
 type Errors = Partial<Record<keyof ProfileData, string>>;
 
@@ -71,13 +64,33 @@ export default function StudentProfile() {
   const [draft, setDraft] = useState<ProfileData>(mockProfileData);
   const [errors, setErrors] = useState<Errors>({});
 
+  // Dynamic departments state from API
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [deptLoading, setDeptLoading] = useState(true);
+  const [deptError, setDeptError] = useState<string | null>(null);
+
+  const fetchDepartments = async () => {
+    setDeptLoading(true);
+    setDeptError(null);
+    try {
+      const activeDepts = await departmentService.getActiveDepartments();
+      setDepartments(activeDepts);
+    } catch {
+      setDeptError('Failed to load active departments from server.');
+    } finally {
+      setDeptLoading(false);
+    }
+  };
+
   useEffect(() => {
+    fetchDepartments();
+
     const fetchProfile = async () => {
       try {
         const response = await studentService.getMyProfile();
         const mappedData: ProfileData = {
           fullName: response.full_name || '',
-          email: user?.email || '', // Email is on user, not profile
+          email: user?.email || '',
           phone: response.phone || '',
           department: response.department?.name || '',
           graduationYear: response.graduation_year?.toString() || '',
@@ -99,6 +112,15 @@ export default function StudentProfile() {
     fetchProfile();
   }, [user]);
 
+  // Combine active departments with current student's saved department if it was deactivated
+  const displayDepartments = (() => {
+    const list = [...departments];
+    if (data.department && !list.some((d) => d.name === data.department)) {
+      list.unshift({ id: -1, name: data.department, is_active: false });
+    }
+    return list;
+  })();
+
   const handleEdit = () => {
     setDraft(data);
     setErrors({});
@@ -118,13 +140,13 @@ export default function StudentProfile() {
     }
     setSaving(true);
     
-    // Find department ID
-    const selectedDept = DEPARTMENTS.find(d => d.name === draft.department);
+    // Find department ID from displayDepartments
+    const selectedDept = displayDepartments.find((d) => d.name === draft.department);
 
     const payload: StudentProfileUpdateRequest = {
       full_name: draft.fullName,
       phone: draft.phone,
-      department_id: selectedDept?.id,
+      department_id: selectedDept && selectedDept.id > 0 ? selectedDept.id : undefined,
       graduation_year: draft.graduationYear ? parseInt(draft.graduationYear, 10) : null,
       cgpa: draft.cgpa ? parseFloat(draft.cgpa) : null,
       date_of_birth: draft.dateOfBirth || null,
@@ -267,19 +289,40 @@ export default function StudentProfile() {
                   <label className="text-sm font-medium leading-none">Department</label>
                   <div className="relative">
                     <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground z-10" />
-                    <Select
-                      value={draft.department}
-                      onValueChange={updateDraft('department')}
-                    >
-                      <SelectTrigger className="pl-9">
-                        <SelectValue placeholder="Select Department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DEPARTMENTS.map(dept => (
-                          <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {deptLoading ? (
+                      <div className="flex h-10 w-full items-center rounded-md border border-input bg-background pl-9 pr-3 text-sm text-muted-foreground">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading departments...
+                      </div>
+                    ) : deptError ? (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex h-10 w-full items-center justify-between rounded-md border border-destructive bg-destructive/5 pl-9 pr-3 text-xs text-destructive">
+                          <span>{deptError}</span>
+                          <button
+                            type="button"
+                            onClick={fetchDepartments}
+                            className="underline font-semibold hover:text-destructive/80"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Select
+                        value={draft.department}
+                        onValueChange={updateDraft('department')}
+                      >
+                        <SelectTrigger className="pl-9">
+                          <SelectValue placeholder="Select Department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {displayDepartments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.name}>
+                              {dept.name} {!dept.is_active ? '(Inactive)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                   {errors.department && <p className="text-xs text-destructive">{errors.department}</p>}
                 </div>

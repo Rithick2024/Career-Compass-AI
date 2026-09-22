@@ -5,7 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useSidebarCollapse } from '@/lib/use-sidebar-collapse';
 
 type AppLayoutProps = {
-  role: 'student' | 'admin';
+  role: 'student' | 'staff';
   userName: string;
   userRole: string;
   avatarText: string;

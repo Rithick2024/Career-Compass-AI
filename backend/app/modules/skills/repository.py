@@ -21,9 +21,41 @@ class SkillRepository:
         result = await self._db.execute(select(Skill).order_by(Skill.name))
         return list(result.scalars().all())
 
+    async def list_active(self) -> List[Skill]:
+        result = await self._db.execute(
+            select(Skill).where(Skill.is_active == True).order_by(Skill.name)
+        )
+        return list(result.scalars().all())
+
     async def get_by_id(self, skill_id: int) -> Optional[Skill]:
         result = await self._db.execute(select(Skill).where(Skill.id == skill_id))
         return result.scalar_one_or_none()
+
+    async def get_by_name(self, name: str) -> Optional[Skill]:
+        result = await self._db.execute(
+            select(Skill).where(Skill.name.ilike(name.strip()))
+        )
+        return result.scalar_one_or_none()
+
+    async def create(self, name: str, category: Optional[str] = None) -> Skill:
+        skill = Skill(name=name.strip(), category=category)
+        self._db.add(skill)
+        await self._db.flush()
+        await self._db.refresh(skill)
+        return skill
+
+    async def update(self, skill: Skill, name: str, category: Optional[str] = None) -> Skill:
+        skill.name = name.strip()
+        skill.category = category
+        await self._db.flush()
+        await self._db.refresh(skill)
+        return skill
+
+    async def update_status(self, skill: Skill, is_active: bool) -> Skill:
+        skill.is_active = is_active
+        await self._db.flush()
+        await self._db.refresh(skill)
+        return skill
 
 
 class StudentSkillRepository:

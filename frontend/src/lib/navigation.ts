@@ -8,7 +8,9 @@ import {
   Gauge,
   Users,
   Building2,
-  BarChart3,
+  GraduationCap,
+  Award,
+  CheckSquare,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -56,32 +58,28 @@ export const studentNav: NavSection[] = [
   },
 ];
 
-export const adminNav: NavSection[] = [
+export const staffNav: NavSection[] = [
   {
     title: 'Overview',
     items: [
-      { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
-      {
-        label: 'Placement Analytics',
-        to: '/admin/analytics',
-        icon: BarChart3,
-      },
+      { label: 'Dashboard', to: '/staff/dashboard', icon: LayoutDashboard },
     ],
   },
   {
-    title: 'Management',
+    title: 'Platform Master Data',
     items: [
-      {
-        label: 'Student Management',
-        to: '/admin/students',
-        icon: Users,
-      },
-      {
-        label: 'Company Management',
-        to: '/admin/companies',
-        icon: Building2,
-      },
-      { label: 'Job Management', to: '/admin/jobs', icon: Briefcase },
+      { label: 'Students', to: '/staff/students', icon: Users },
+      { label: 'Departments', to: '/staff/departments', icon: GraduationCap },
+      { label: 'Skills Catalog', to: '/staff/skills', icon: Sparkles },
+      { label: 'Companies', to: '/staff/companies', icon: Building2 },
+      { label: 'Job Postings', to: '/staff/jobs', icon: Briefcase },
+    ],
+  },
+  {
+    title: 'Placement Operations',
+    items: [
+      { label: 'Applications', to: '/staff/applications', icon: CheckSquare },
+      { label: 'Placements', to: '/staff/placements', icon: Award },
     ],
   },
 ];

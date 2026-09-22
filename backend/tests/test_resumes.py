@@ -385,11 +385,21 @@ async def test_unauthenticated_requests_rejected(client):
     assert resp.status_code == 401
 
 
-async def test_admin_cannot_access_student_resumes(client):
-    token = await _register_and_login(client, "admin@example.com")
-    # Promote user to admin in DB if needed, or register as admin rejected
-    # In auth service, admin registration is rejected by default. Let's test standard endpoint headers.
-    pass
+async def test_staff_cannot_access_student_resumes(client, db_session, user_repo):
+    token = await _register_and_login(client, "staff-resume-blocked@example.com")
+    user = await user_repo.get_by_email("staff-resume-blocked@example.com")
+    user.role = RoleEnum.STAFF
+    await db_session.commit()
+
+    staff_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "staff-resume-blocked@example.com", "password": "SecurePass123"},
+    )
+    staff_token = staff_login.json()["access_token"]
+
+    resp = await client.get("/api/v1/students/me/resumes", headers=_auth_headers(staff_token))
+    assert resp.status_code == 403
+    assert resp.json()["error_code"] == "INSUFFICIENT_ROLE"
 
 
 async def test_cross_student_isolation(client):

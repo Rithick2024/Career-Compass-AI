@@ -10,11 +10,15 @@ from typing import List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.modules.skills.repository import SkillRepository, StudentSkillRepository
 from app.modules.skills.schemas import (
     AddStudentSkillRequest,
+    SkillCreateRequest,
     SkillOut,
+    SkillResponse,
+    SkillStatusUpdateRequest,
+    SkillUpdateRequest,
     StudentSkillResponse,
     UpdateStudentSkillProficiencyRequest,
 )
@@ -22,19 +26,6 @@ from app.modules.students.repository import StudentRepository
 
 
 class SkillService:
-    """
-    Owns the transaction boundary for skill operations, same pattern
-    as `AuthService`/`StudentService`.
-
-    Reuses `StudentRepository` (not `StudentService`) to resolve —
-    and, on first access, auto-provision — the current user's
-    `students.id`. `student_skills.student_id` references `students.id`,
-    not `users.id`, so this resolution step is required before any
-    skill operation. Reusing the Student module's repository directly
-    mirrors `StudentService._get_or_create_profile`'s own get-or-create
-    logic instead of duplicating it — see docs/skills-module.md.
-    """
-
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._skills = SkillRepository(db)
@@ -49,7 +40,7 @@ class SkillService:
         return student.id
 
     async def list_catalog(self) -> List[SkillOut]:
-        skills = await self._skills.list_all()
+        skills = await self._skills.list_active()
         return [SkillOut.model_validate(skill) for skill in skills]
 
     async def list_my_skills(self, user_id: int) -> List[StudentSkillResponse]:
@@ -63,9 +54,9 @@ class SkillService:
         student_id = await self._get_or_create_student_id(user_id)
 
         skill = await self._skills.get_by_id(data.skill_id)
-        if skill is None:
+        if skill is None or not skill.is_active:
             raise NotFoundError(
-                "The specified skill does not exist.", error_code="SKILL_NOT_FOUND"
+                "The specified skill does not exist or is inactive.", error_code="SKILL_NOT_FOUND"
             )
 
         existing = await self._student_skills.get_for_student_and_skill(
@@ -82,11 +73,6 @@ class SkillService:
         )
         await self._db.commit()
 
-        # Same defensive re-fetch as StudentService.update_my_profile:
-        # `create()`'s plain `refresh()` reloads columns but does not
-        # itself populate the `skill` relationship, so re-querying
-        # (which does, via `lazy="selectin"`) avoids a MissingGreenlet
-        # error during response serialization.
         self._db.expire(student_skill)
         student_skill = await self._student_skills.get_for_student_and_skill(
             student_id, data.skill_id
@@ -107,9 +93,6 @@ class SkillService:
                 error_code="STUDENT_SKILL_NOT_FOUND",
             )
 
-        # Only `proficiency` changes here — `skill_id` is untouched, so
-        # (unlike `add_skill`) the already-loaded `skill` relationship
-        # stays valid and a plain refresh() is sufficient.
         student_skill.proficiency = data.proficiency
         await self._db.commit()
         await self._db.refresh(student_skill)
@@ -129,3 +112,56 @@ class SkillService:
 
         await self._student_skills.delete(student_skill)
         await self._db.commit()
+
+    # --- Staff Skill Catalog Management ---
+
+    async def list_all_skills(self) -> List[SkillResponse]:
+        skills = await self._skills.list_all()
+        return [SkillResponse.model_validate(s) for s in skills]
+
+    async def create_skill(self, data: SkillCreateRequest) -> SkillResponse:
+        clean_name = data.name.strip()
+        existing = await self._skills.get_by_name(clean_name)
+        if existing is not None:
+            raise ConflictError(
+                "A skill with this name already exists.",
+                error_code="SKILL_ALREADY_EXISTS",
+            )
+
+        skill = await self._skills.create(clean_name, data.category)
+        await self._db.commit()
+        return SkillResponse.model_validate(skill)
+
+    async def update_skill(self, skill_id: int, data: SkillUpdateRequest) -> SkillResponse:
+        skill = await self._skills.get_by_id(skill_id)
+        if skill is None:
+            raise NotFoundError(
+                "The specified skill does not exist.",
+                error_code="SKILL_NOT_FOUND",
+            )
+
+        clean_name = data.name.strip()
+        existing = await self._skills.get_by_name(clean_name)
+        if existing is not None and existing.id != skill_id:
+            raise ConflictError(
+                "A skill with this name already exists.",
+                error_code="SKILL_ALREADY_EXISTS",
+            )
+
+        updated_skill = await self._skills.update(skill, clean_name, data.category)
+        await self._db.commit()
+        return SkillResponse.model_validate(updated_skill)
+
+    async def update_skill_status(
+        self, skill_id: int, data: SkillStatusUpdateRequest
+    ) -> SkillResponse:
+        skill = await self._skills.get_by_id(skill_id)
+        if skill is None:
+            raise NotFoundError(
+                "The specified skill does not exist.",
+                error_code="SKILL_NOT_FOUND",
+            )
+
+        updated_skill = await self._skills.update_status(skill, data.is_active)
+        await self._db.commit()
+        return SkillResponse.model_validate(updated_skill)

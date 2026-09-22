@@ -11,9 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, ForbiddenError, UnauthorizedError
 from app.core.jwt import create_access_token, decode_access_token, TokenError
 from app.core.security import hash_password, verify_password
+from app.shared.enums import RoleEnum
 from app.modules.auth.models import User
 from app.modules.auth.repository import UserRepository
-from app.modules.auth.schemas import TokenResponse, UserPublic, UserRegisterRequest
+from app.modules.auth.schemas import (
+    StaffRegisterRequest,
+    TokenResponse,
+    UserPublic,
+    UserRegisterRequest,
+)
 
 
 class AuthService:
@@ -43,6 +49,22 @@ class AuthService:
             email=data.email,
             password_hash=hash_password(data.password),
             role=data.role,
+        )
+        await self._db.commit()
+        return UserPublic.model_validate(user)
+
+    async def register_staff(self, data: StaffRegisterRequest) -> UserPublic:
+        existing = await self._repo.get_by_email(data.email)
+        if existing is not None:
+            raise ConflictError(
+                "An account with this email already exists.",
+                error_code="EMAIL_ALREADY_REGISTERED",
+            )
+
+        user = await self._repo.create(
+            email=data.email,
+            password_hash=hash_password(data.password),
+            role=RoleEnum.STAFF,
         )
         await self._db.commit()
         return UserPublic.model_validate(user)

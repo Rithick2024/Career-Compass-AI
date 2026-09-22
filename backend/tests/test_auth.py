@@ -79,6 +79,27 @@ async def test_register_admin_role_rejected(client):
     assert body["error_code"] == "VALIDATION_ERROR"
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_register_staff_endpoint(client):
+    """Developer endpoint allows creating a staff user directly."""
+    resp = await client.post(
+        "/api/v1/auth/staff-register",
+        json={"email": "dev-staff@example.com", "password": "StaffPass123"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["email"] == "dev-staff@example.com"
+    assert body["role"] == "staff"
+
+    # Login works as staff
+    login_resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "dev-staff@example.com", "password": "StaffPass123"},
+    )
+    assert login_resp.status_code == 200
+    assert login_resp.json()["user"]["role"] == "staff"
+
+
 # --- Login ---------------------------------------------------------------
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -176,13 +197,13 @@ def _make_user(role: RoleEnum) -> User:
 
 
 def test_require_role_allows_matching_role():
-    check = require_role(RoleEnum.ADMIN)
-    admin = _make_user(RoleEnum.ADMIN)
-    assert check(admin) is admin
+    check = require_role(RoleEnum.STAFF)
+    staff = _make_user(RoleEnum.STAFF)
+    assert check(staff) is staff
 
 
 def test_require_role_rejects_non_matching_role():
-    check = require_role(RoleEnum.ADMIN)
+    check = require_role(RoleEnum.STAFF)
     student = _make_user(RoleEnum.STUDENT)
     with pytest.raises(ForbiddenError) as exc_info:
         check(student)

@@ -28,6 +28,47 @@ class DepartmentOut(BaseModel):
 
     id: int
     name: str
+    is_active: bool = True
+
+
+class DepartmentResponse(BaseModel):
+    """Full department representation for staff and catalog management."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class DepartmentCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Department name cannot be blank.")
+        return value
+
+
+class DepartmentUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Department name cannot be blank.")
+        return value
+
+
+class DepartmentStatusUpdateRequest(BaseModel):
+    is_active: bool
 
 
 class StudentProfileResponse(BaseModel):

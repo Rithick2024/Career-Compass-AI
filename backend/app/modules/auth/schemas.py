@@ -37,9 +37,21 @@ class UserRegisterRequest(BaseModel):
         if value is not None and value != RoleEnum.STUDENT:
             raise ValueError(
                 "Public registration can only create student accounts. "
-                "Admin accounts must be provisioned separately."
+                "Staff accounts must be provisioned separately."
             )
         return RoleEnum.STUDENT
+
+
+class StaffRegisterRequest(BaseModel):
+    """Developer/testing request schema to provision a staff account via Swagger UI."""
+
+    email: EmailStr
+    password: str = Field(min_length=_PASSWORD_MIN_LENGTH, max_length=_PASSWORD_MAX_LENGTH)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
 
 
 class UserLoginRequest(BaseModel):

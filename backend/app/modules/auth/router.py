@@ -9,6 +9,7 @@ from typing import Annotated
 
 from app.api.deps import AuthServiceDep, CurrentUser
 from app.modules.auth.schemas import (
+    StaffRegisterRequest,
     TokenResponse,
     UserLoginRequest,
     UserPublic,
@@ -24,10 +25,20 @@ async def register(data: UserRegisterRequest, auth_service: AuthServiceDep) -> U
     Register a new account.
 
     Public registration always creates a `student` account — see
-    docs/authentication.md for why admin accounts cannot be
+    docs/authentication.md for why staff accounts cannot be
     self-registered.
     """
     return await auth_service.register(data)
+
+
+@router.post("/staff-register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
+async def register_staff(data: StaffRegisterRequest, auth_service: AuthServiceDep) -> UserPublic:
+    """
+    Developer/Testing endpoint: Provision a new Staff account via Swagger UI.
+
+    Not exposed on the frontend user-facing UI.
+    """
+    return await auth_service.register_staff(data)
 
 
 @router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)

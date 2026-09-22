@@ -11,6 +11,9 @@ const StudentDashboard = lazy(() => import('@/features/student/pages/StudentDash
 const StudentProfile = lazy(() => import('@/features/student/pages/StudentProfile'));
 const StudentSkills = lazy(() => import('@/features/student/pages/StudentSkills'));
 const StudentResume = lazy(() => import('@/features/student/pages/StudentResume'));
+const StaffDashboard = lazy(() => import('@/features/staff/pages/StaffDashboard'));
+const StaffDepartmentsPage = lazy(() => import('@/features/staff/pages/StaffDepartmentsPage'));
+const StaffSkillsPage = lazy(() => import('@/features/staff/pages/StaffSkillsPage'));
 
 // Loading fallback
 const PageLoader = () => (
@@ -42,12 +45,17 @@ function AppRoutes() {
           />
         ))}
 
-        {/* Admin module placeholder */}
-        {['dashboard', 'students', 'companies', 'jobs', 'analytics'].map((p) => (
+        {/* Staff module */}
+        <Route path="/staff/dashboard" element={<ProtectedRoute allowedRoles={['staff']}><StaffDashboard /></ProtectedRoute>} />
+        <Route path="/staff/departments" element={<ProtectedRoute allowedRoles={['staff']}><StaffDepartmentsPage /></ProtectedRoute>} />
+        <Route path="/staff/skills" element={<ProtectedRoute allowedRoles={['staff']}><StaffSkillsPage /></ProtectedRoute>} />
+
+        {/* Placeholder routes for remaining staff pages */}
+        {['students', 'companies', 'jobs', 'applications', 'placements'].map((p) => (
           <Route
             key={p}
-            path={`/admin/${p}`}
-            element={<ProtectedRoute allowedRoles={['admin']}><StudentDashboard /></ProtectedRoute>}
+            path={`/staff/${p}`}
+            element={<ProtectedRoute allowedRoles={['staff']}><StaffDashboard /></ProtectedRoute>}
           />
         ))}
 

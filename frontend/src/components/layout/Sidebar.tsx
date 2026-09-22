@@ -1,21 +1,21 @@
 import { NavLink } from 'react-router-dom';
 import { Compass, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { studentNav, adminNav, type NavSection } from '@/lib/navigation';
+import { studentNav, staffNav, type NavSection } from '@/lib/navigation';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 type SidebarProps = {
-  role: 'student' | 'admin';
+  role: 'student' | 'staff';
   open: boolean;
   onClose: () => void;
   collapsed: boolean;
 };
 
 export function Sidebar({ role, open, onClose, collapsed }: SidebarProps) {
-  const sections: NavSection[] = role === 'student' ? studentNav : adminNav;
+  const sections: NavSection[] = role === 'student' ? studentNav : staffNav;
 
   return (
     <>

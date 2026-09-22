@@ -33,7 +33,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (user) {
-      navigate(user.role === 'student' ? '/student/dashboard' : '/admin/dashboard');
+      navigate(user.role === 'student' ? '/student/dashboard' : '/staff/dashboard');
     }
   }, [user, navigate]);
 

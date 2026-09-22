@@ -5,17 +5,18 @@ import { Fragment } from 'react';
 
 const routeLabels: Record<string, string> = {
   student: 'Student',
-  admin: 'Admin',
+  staff: 'Staff',
   dashboard: 'Dashboard',
   profile: 'My Profile',
   skills: 'Skills',
   resume: 'Resume Management',
-  jobs: 'Available Jobs',
-  applications: 'My Applications',
+  jobs: 'Jobs',
+  applications: 'Applications',
   readiness: 'Placement Readiness',
   students: 'Student Management',
+  departments: 'Department Management',
   companies: 'Company Management',
-  analytics: 'Placement Analytics',
+  placements: 'Placement Management',
 };
 
 export function Breadcrumbs() {

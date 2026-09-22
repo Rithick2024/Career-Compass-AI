@@ -263,26 +263,133 @@ async def test_student_cannot_see_or_modify_another_students_skills(client, db_s
 
 # --- Authorization (role) ---------------------------------------------------
 
-async def test_admin_cannot_use_student_skill_endpoints(client, db_session, user_repo):
-    token = await _register_and_login(client, "admin-blocked@example.com")
-    user = await user_repo.get_by_email("admin-blocked@example.com")
-    user.role = RoleEnum.ADMIN
+async def test_staff_cannot_use_student_skill_endpoints(client, db_session, user_repo):
+    token = await _register_and_login(client, "staff-blocked@example.com")
+    user = await user_repo.get_by_email("staff-blocked@example.com")
+    user.role = RoleEnum.STAFF
     await db_session.commit()
 
     # Re-login to get a fresh token (role is embedded as a convenience
     # claim at issue time in this codebase's JWT — a fresh token
     # reflects the DB update just made).
-    admin_login = await client.post(
+    staff_login = await client.post(
         "/api/v1/auth/login",
-        json={"email": "admin-blocked@example.com", "password": "SecurePass123"},
+        json={"email": "staff-blocked@example.com", "password": "SecurePass123"},
     )
-    admin_token = admin_login.json()["access_token"]
+    staff_token = staff_login.json()["access_token"]
 
-    catalog_resp = await client.get("/api/v1/skills", headers=_auth_headers(admin_token))
+    catalog_resp = await client.get("/api/v1/skills", headers=_auth_headers(staff_token))
     assert catalog_resp.status_code == 403
     assert catalog_resp.json()["error_code"] == "INSUFFICIENT_ROLE"
 
     my_skills_resp = await client.get(
-        "/api/v1/students/me/skills", headers=_auth_headers(admin_token)
+        "/api/v1/students/me/skills", headers=_auth_headers(staff_token)
     )
     assert my_skills_resp.status_code == 403
+
+
+# --- Staff Skill Catalog Management Tests -----------------------------------
+
+async def test_staff_skill_crud(client, db_session, user_repo):
+    token = await _register_and_login(client, "staff-skill-admin@example.com")
+    user = await user_repo.get_by_email("staff-skill-admin@example.com")
+    user.role = RoleEnum.STAFF
+    await db_session.commit()
+
+    staff_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "staff-skill-admin@example.com", "password": "SecurePass123"},
+    )
+    staff_token = staff_login.json()["access_token"]
+    headers = _auth_headers(staff_token)
+
+    # 1. Staff list skills
+    list_res = await client.get("/api/v1/staff/skills", headers=headers)
+    assert list_res.status_code == 200
+
+    # 2. Staff create skill
+    create_res = await client.post(
+        "/api/v1/staff/skills",
+        headers=headers,
+        json={"name": " Rust Programming ", "category": " Systems "},
+    )
+    assert create_res.status_code == 201
+    skill_data = create_res.json()
+    assert skill_data["name"] == "Rust Programming"
+    assert skill_data["category"] == "Systems"
+    assert skill_data["is_active"] is True
+    skill_id = skill_data["id"]
+
+    # 3. Staff update skill
+    update_res = await client.patch(
+        f"/api/v1/staff/skills/{skill_id}",
+        headers=headers,
+        json={"name": "Rust Systems Programming", "category": "Backend"},
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["name"] == "Rust Systems Programming"
+    assert update_res.json()["category"] == "Backend"
+
+    # 4. Staff deactivate skill
+    deact_res = await client.patch(
+        f"/api/v1/staff/skills/{skill_id}/status",
+        headers=headers,
+        json={"is_active": False},
+    )
+    assert deact_res.status_code == 200
+    assert deact_res.json()["is_active"] is False
+
+    # 5. Staff reactivate skill
+    react_res = await client.patch(
+        f"/api/v1/staff/skills/{skill_id}/status",
+        headers=headers,
+        json={"is_active": True},
+    )
+    assert react_res.status_code == 200
+    assert react_res.json()["is_active"] is True
+
+
+async def test_student_cannot_add_inactive_skill(client, db_session, user_repo):
+    # Staff creates and deactivates a skill
+    staff_token_str = await _register_and_login(client, "staff-deact-skill@example.com")
+    user = await user_repo.get_by_email("staff-deact-skill@example.com")
+    user.role = RoleEnum.STAFF
+    await db_session.commit()
+
+    staff_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "staff-deact-skill@example.com", "password": "SecurePass123"},
+    )
+    headers = _auth_headers(staff_login.json()["access_token"])
+
+    create_res = await client.post(
+        "/api/v1/staff/skills",
+        headers=headers,
+        json={"name": "Deprecated COBOL", "category": "Legacy"},
+    )
+    skill_id = create_res.json()["id"]
+
+    await client.patch(
+        f"/api/v1/staff/skills/{skill_id}/status",
+        headers=headers,
+        json={"is_active": False},
+    )
+
+    # Student registers
+    student_token = await _register_and_login(client, "student-inactive-skill@example.com")
+    student_headers = _auth_headers(student_token)
+
+    # Student catalog listing should NOT include inactive skill
+    cat_res = await client.get("/api/v1/skills", headers=student_headers)
+    assert cat_res.status_code == 200
+    catalog_ids = [s["id"] for s in cat_res.json()]
+    assert skill_id not in catalog_ids
+
+    # Student trying to add inactive skill is rejected
+    add_res = await client.post(
+        "/api/v1/students/me/skills",
+        headers=student_headers,
+        json={"skill_id": skill_id, "proficiency": "beginner"},
+    )
+    assert add_res.status_code == 404
+    assert add_res.json()["error_code"] == "SKILL_NOT_FOUND"
