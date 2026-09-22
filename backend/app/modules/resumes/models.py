@@ -8,17 +8,24 @@ captured elsewhere (full_name, email, phone, department, graduation_year,
 cgpa, skills) are deliberately NOT duplicated here; this table only
 holds resume-specific structured content.
 
-MVP scope: `professional_summary` and `career_objective` only — no
-education/experience/projects/certifications sub-tables yet (see
+MVP scope: `professional_summary`/`career_objective` plus optional
+uploaded-file metadata (`file_name`/`file_path`/`file_type`/`file_size`)
+— no education/experience/projects/certifications sub-tables yet (see
 docs/resume-module.md for the planned future extension and why this
 model is designed so those can be added later as separate one-to-many
 tables without breaking this API).
+
+The actual uploaded file is NEVER stored in PostgreSQL — only metadata
+and a relative path live here; the file itself lives on the backend
+filesystem (see app.modules.resumes.storage). All four file columns
+are nullable since a resume may exist with no file uploaded yet, and
+existing resumes created before file upload was added have none.
 """
 
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -38,6 +45,15 @@ class Resume(Base):
 
     professional_summary: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     career_objective: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+
+    # Uploaded-file metadata only — the file itself lives on the
+    # filesystem under a generated (never client-supplied) filename.
+    # `file_path` is relative to the configured upload root and is
+    # never exposed in any API response (see ResumeResponse).
+    file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    file_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

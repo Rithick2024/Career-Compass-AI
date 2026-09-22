@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
+    # --- Resume file storage ---
+    # Relative to the project root; resolved by app.modules.resumes.storage.
+    # Local filesystem for this MVP — see docs/resume-module.md for the
+    # planned cloud-storage migration path.
+    RESUME_UPLOAD_DIR: str = "uploads/resumes"
+    RESUME_MAX_FILE_SIZE_MB: int = 5
+
     @computed_field  # type: ignore[misc]
     @property
     def DATABASE_URL(self) -> str:

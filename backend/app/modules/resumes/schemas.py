@@ -7,7 +7,7 @@ router.
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 # Reasonable maxima for resume content — generous enough for genuine
 # summaries/objectives, not a hard technical limit. Mirrored on the
@@ -28,7 +28,13 @@ def _strip_or_none(value: Optional[str]) -> Optional[str]:
 class ResumeResponse(BaseModel):
     """Safe, outward-facing resume representation. Never duplicates any
     field already owned by `User`/`Student`/skills (email, full_name,
-    department, cgpa, skills, etc.) — those live elsewhere."""
+    department, cgpa, skills, etc.) — those live elsewhere.
+
+    Deliberately excludes `file_path` — the server-internal storage
+    path is never returned to a client (see docs/resume-module.md).
+    `has_file` is derived, not a real column, so it can never drift
+    from the actual presence of `file_name`.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,8 +42,16 @@ class ResumeResponse(BaseModel):
     student_id: int
     professional_summary: Optional[str] = None
     career_objective: Optional[str] = None
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def has_file(self) -> bool:
+        return self.file_name is not None
 
 
 class ResumeCreate(BaseModel):

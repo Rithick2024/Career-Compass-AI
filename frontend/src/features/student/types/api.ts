@@ -56,3 +56,26 @@ export interface AddStudentSkillRequest {
 export interface UpdateStudentSkillProficiencyRequest {
   proficiency: BackendProficiency;
 }
+
+export interface ResumeResponse {
+  id: number;
+  student_id: number;
+  professional_summary: string | null;
+  career_objective: string | null;
+  file_name?: string | null;
+  file_type?: string | null;
+  file_size?: number | null;
+  has_file?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateResumeRequest {
+  professional_summary: string | null;
+  career_objective: string | null;
+}
+
+export interface UpdateResumeRequest {
+  professional_summary?: string | null;
+  career_objective?: string | null;
+}

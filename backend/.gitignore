@@ -26,6 +26,9 @@ htmlcov/
 *.sqlite
 *.sqlite3
 
+# Uploaded files (resume storage — see docs/resume-module.md)
+/uploads/
+
 # IDE
 .vscode/
 .idea/
