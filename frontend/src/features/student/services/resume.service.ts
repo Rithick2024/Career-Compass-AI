@@ -1,30 +1,26 @@
 import api from '../../../api/axios';
-import { ResumeResponse, CreateResumeRequest, UpdateResumeRequest } from '../types/api';
+import { ResumeResponse, CreateResumeData, UpdateResumeData } from '../types/api';
 
 export const resumeService = {
-  async getResume(): Promise<ResumeResponse> {
-    const response = await api.get<ResumeResponse>('/students/me/resume');
+  async getResumes(): Promise<ResumeResponse[]> {
+    const response = await api.get<ResumeResponse[]>('/students/me/resumes');
     return response.data;
   },
 
-  async createResume(data: CreateResumeRequest): Promise<ResumeResponse> {
-    const response = await api.post<ResumeResponse>('/students/me/resume', data);
+  async getResume(id: number): Promise<ResumeResponse> {
+    const response = await api.get<ResumeResponse>(`/students/me/resumes/${id}`);
     return response.data;
   },
 
-  async updateResume(data: UpdateResumeRequest): Promise<ResumeResponse> {
-    const response = await api.patch<ResumeResponse>('/students/me/resume', data);
-    return response.data;
-  },
-
-  async deleteResume(): Promise<void> {
-    await api.delete('/students/me/resume');
-  },
-
-  async uploadResumeFile(file: File): Promise<ResumeResponse> {
+  async createResume(data: CreateResumeData): Promise<ResumeResponse> {
     const formData = new FormData();
-    formData.append('file', file);
-    const response = await api.post<ResumeResponse>('/students/me/resume/file', formData, {
+    formData.append('title', data.title);
+    if (data.description) {
+      formData.append('description', data.description);
+    }
+    formData.append('file', data.file);
+
+    const response = await api.post<ResumeResponse>('/students/me/resumes', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -32,15 +28,24 @@ export const resumeService = {
     return response.data;
   },
 
-  async downloadResumeFile(): Promise<Blob> {
-    const response = await api.get<Blob>('/students/me/resume/file', {
+  async updateResume(id: number, data: UpdateResumeData): Promise<ResumeResponse> {
+    const response = await api.patch<ResumeResponse>(`/students/me/resumes/${id}`, data);
+    return response.data;
+  },
+
+  async deleteResume(id: number): Promise<void> {
+    await api.delete(`/students/me/resumes/${id}`);
+  },
+
+  async downloadResumeFile(id: number): Promise<Blob> {
+    const response = await api.get<Blob>(`/students/me/resumes/${id}/file`, {
       responseType: 'blob',
     });
     return response.data;
   },
 
-  async deleteResumeFile(): Promise<ResumeResponse> {
-    const response = await api.delete<ResumeResponse>('/students/me/resume/file');
+  async setDefaultResume(id: number): Promise<ResumeResponse> {
+    const response = await api.patch<ResumeResponse>(`/students/me/resumes/${id}/default`);
     return response.data;
-  }
+  },
 };

@@ -1,31 +1,18 @@
 """
-Resume ORM model.
+Resume ORM model for multiple resume documents per student.
 
-`resumes` is a 0..1 structured extension of `students` (unique
-`student_id` FK, `ON DELETE CASCADE`) — a student may have at most one
-resume profile, and it never exists without a student. Fields already
-captured elsewhere (full_name, email, phone, department, graduation_year,
-cgpa, skills) are deliberately NOT duplicated here; this table only
-holds resume-specific structured content.
+`resumes` represents a 1..N relationship with `students` (`student_id` FK,
+`ON DELETE CASCADE`). A student may create multiple resume documents (e.g.,
+Frontend Developer, Data Analyst, General), each tied to a physical file.
 
-MVP scope: `professional_summary`/`career_objective` plus optional
-uploaded-file metadata (`file_name`/`file_path`/`file_type`/`file_size`)
-— no education/experience/projects/certifications sub-tables yet (see
-docs/resume-module.md for the planned future extension and why this
-model is designed so those can be added later as separate one-to-many
-tables without breaking this API).
-
-The actual uploaded file is NEVER stored in PostgreSQL — only metadata
-and a relative path live here; the file itself lives on the backend
-filesystem (see app.modules.resumes.storage). All four file columns
-are nullable since a resume may exist with no file uploaded yet, and
-existing resumes created before file upload was added have none.
+Exactly one resume per student can be designated as the default (`is_default=True`).
+This invariant is enforced at the service level and via a partial unique index.
 """
 
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -36,24 +23,23 @@ class Resume(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    # 0..1 with students — `unique=True` enforces at most one resume
-    # per student. Deleting a student's profile takes their resume
-    # with it.
+    # 1..N with students (unique=False so a student can have multiple resumes)
     student_id: Mapped[int] = mapped_column(
-        ForeignKey("students.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
+        ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
-    professional_summary: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
-    career_objective: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
-    # Uploaded-file metadata only — the file itself lives on the
-    # filesystem under a generated (never client-supplied) filename.
-    # `file_path` is relative to the configured upload root and is
-    # never exposed in any API response (see ResumeResponse).
-    file_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    file_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    file_size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # File metadata
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -65,5 +51,14 @@ class Resume(Base):
         onupdate=func.now(),
     )
 
+    __table_args__ = (
+        Index(
+            "idx_student_default_resume",
+            "student_id",
+            unique=True,
+            postgresql_where=(is_default.is_(True)),
+        ),
+    )
+
     def __repr__(self) -> str:  # pragma: no cover
-        return f"<Resume id={self.id} student_id={self.student_id}>"
+        return f"<Resume id={self.id} student_id={self.student_id} title={self.title!r} is_default={self.is_default}>"
