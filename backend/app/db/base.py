@@ -8,6 +8,7 @@ Every feature module's ORM models are imported here so
 
 from app.db.database import Base  # noqa: F401
 from app.modules.auth.models import User  # noqa: F401
+from app.modules.companies.models import Company  # noqa: F401
 from app.modules.resumes.models import Resume  # noqa: F401
 from app.modules.skills.models import Skill, StudentSkill  # noqa: F401
 from app.modules.students.models import Department, Student  # noqa: F401

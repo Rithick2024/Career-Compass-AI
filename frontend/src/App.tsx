@@ -14,6 +14,8 @@ const StudentResume = lazy(() => import('@/features/student/pages/StudentResume'
 const StaffDashboard = lazy(() => import('@/features/staff/pages/StaffDashboard'));
 const StaffDepartmentsPage = lazy(() => import('@/features/staff/pages/StaffDepartmentsPage'));
 const StaffSkillsPage = lazy(() => import('@/features/staff/pages/StaffSkillsPage'));
+const StaffCompaniesPage = lazy(() => import('@/features/staff/pages/StaffCompaniesPage'));
+const StaffStudentsPage = lazy(() => import('@/features/staff/pages/StaffStudentsPage'));
 
 // Loading fallback
 const PageLoader = () => (
@@ -47,11 +49,13 @@ function AppRoutes() {
 
         {/* Staff module */}
         <Route path="/staff/dashboard" element={<ProtectedRoute allowedRoles={['staff']}><StaffDashboard /></ProtectedRoute>} />
+        <Route path="/staff/students" element={<ProtectedRoute allowedRoles={['staff']}><StaffStudentsPage /></ProtectedRoute>} />
         <Route path="/staff/departments" element={<ProtectedRoute allowedRoles={['staff']}><StaffDepartmentsPage /></ProtectedRoute>} />
         <Route path="/staff/skills" element={<ProtectedRoute allowedRoles={['staff']}><StaffSkillsPage /></ProtectedRoute>} />
+        <Route path="/staff/companies" element={<ProtectedRoute allowedRoles={['staff']}><StaffCompaniesPage /></ProtectedRoute>} />
 
         {/* Placeholder routes for remaining staff pages */}
-        {['students', 'companies', 'jobs', 'applications', 'placements'].map((p) => (
+        {['jobs', 'applications', 'placements'].map((p) => (
           <Route
             key={p}
             path={`/staff/${p}`}
