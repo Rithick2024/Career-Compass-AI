@@ -6,12 +6,13 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import JobServiceDep, RequireStaff
+from app.api.deps import JobServiceDep, RequireStaff, RequireStudent
 from app.modules.jobs.schemas import (
     JobCreateRequest,
     JobResponse,
     JobStatusUpdateRequest,
     JobUpdateRequest,
+    StudentJobResponse,
 )
 
 staff_jobs_router = APIRouter(prefix="/staff/jobs", tags=["Staff Jobs"])
@@ -75,3 +76,38 @@ async def update_job_status(
 ) -> JobResponse:
     """Update job active status (soft activation/deactivation)."""
     return await job_service.update_job_status(job_id, data)
+
+
+student_jobs_router = APIRouter(prefix="/student/jobs", tags=["Student Jobs"])
+
+
+@student_jobs_router.get("", response_model=List[StudentJobResponse], status_code=status.HTTP_200_OK)
+async def list_student_jobs(
+    current_user: RequireStudent,
+    job_service: JobServiceDep,
+    search: Optional[str] = Query(default=None, description="Search by title, company, or role category"),
+    company_id: Optional[int] = Query(default=None, description="Filter by company ID"),
+    employment_type: Optional[str] = Query(default=None, description="Filter by employment type"),
+    eligible_only: bool = Query(default=False, description="Show only eligible jobs"),
+) -> List[StudentJobResponse]:
+    """Return list of open and visible jobs for student discovery."""
+    return await job_service.list_student_jobs(
+        user_id=current_user.id,
+        search=search,
+        company_id=company_id,
+        employment_type=employment_type,
+        eligible_only=eligible_only,
+    )
+
+
+@student_jobs_router.get("/{job_id}", response_model=StudentJobResponse, status_code=status.HTTP_200_OK)
+async def get_student_job(
+    job_id: int,
+    current_user: RequireStudent,
+    job_service: JobServiceDep,
+) -> StudentJobResponse:
+    """Get a single visible job posting by ID for student."""
+    return await job_service.get_student_job(
+        user_id=current_user.id,
+        job_id=job_id,
+    )

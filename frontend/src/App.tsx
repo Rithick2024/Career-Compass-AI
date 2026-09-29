@@ -11,6 +11,7 @@ const StudentDashboard = lazy(() => import('@/features/student/pages/StudentDash
 const StudentProfile = lazy(() => import('@/features/student/pages/StudentProfile'));
 const StudentSkills = lazy(() => import('@/features/student/pages/StudentSkills'));
 const StudentResume = lazy(() => import('@/features/student/pages/StudentResume'));
+const StudentJobsPage = lazy(() => import('@/features/student/pages/StudentJobsPage'));
 const StaffDashboard = lazy(() => import('@/features/staff/pages/StaffDashboard'));
 const StaffDepartmentsPage = lazy(() => import('@/features/staff/pages/StaffDepartmentsPage'));
 const StaffSkillsPage = lazy(() => import('@/features/staff/pages/StaffSkillsPage'));
@@ -38,9 +39,10 @@ function AppRoutes() {
         <Route path="/student/profile" element={<ProtectedRoute allowedRoles={['student']}><StudentProfile /></ProtectedRoute>} />
         <Route path="/student/skills" element={<ProtectedRoute allowedRoles={['student']}><StudentSkills /></ProtectedRoute>} />
         <Route path="/student/resume" element={<ProtectedRoute allowedRoles={['student']}><StudentResume /></ProtectedRoute>} />
+        <Route path="/student/jobs" element={<ProtectedRoute allowedRoles={['student']}><StudentJobsPage /></ProtectedRoute>} />
 
         {/* Placeholder routes for remaining student pages */}
-        {['jobs', 'applications', 'readiness'].map((p) => (
+        {['applications', 'readiness'].map((p) => (
           <Route
             key={p}
             path={`/student/${p}`}

@@ -3,7 +3,7 @@ Job service layer — business logic, validation, and transaction management.
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,8 @@ from app.modules.jobs.schemas import (
     JobResponse,
     JobStatusUpdateRequest,
     JobUpdateRequest,
+    StudentCompanyResponse,
+    StudentJobResponse,
 )
 from app.modules.skills.repository import SkillRepository
 from app.modules.students.repository import StudentRepository
@@ -261,3 +263,99 @@ class JobService:
         updated_job = await self._repo.update_job_status(job, data.is_active)
         await self._db.commit()
         return self._to_response(updated_job)
+
+    # --- Student Endpoints ---
+
+    def _to_student_response(self, job: Job, student: Optional[Any]) -> StudentJobResponse:
+        company_resp = StudentCompanyResponse.model_validate(job.company)
+
+        skill_responses = [
+            JobRequiredSkillResponse(
+                id=jrs.id,
+                skill_id=jrs.skill_id,
+                skill_name=jrs.skill.name if jrs.skill else "",
+                category=jrs.skill.category if jrs.skill else None,
+                min_proficiency=jrs.min_proficiency,
+            )
+            for jrs in job.required_skills
+        ]
+
+        dept_responses = [
+            JobEligibleDepartmentResponse(
+                id=jed.id,
+                department_id=jed.department_id,
+                department_name=jed.department.name if jed.department else "",
+            )
+            for jed in job.eligible_departments
+        ]
+
+        # Calculate Department Eligibility
+        is_department_eligible = True
+        if job.eligible_departments:
+            if student and student.department_id:
+                is_department_eligible = any(
+                    jed.department_id == student.department_id
+                    for jed in job.eligible_departments
+                )
+            else:
+                is_department_eligible = False
+
+        # Calculate CGPA Eligibility
+        is_cgpa_eligible = True
+        if job.min_cgpa is not None:
+            if student and student.cgpa is not None:
+                is_cgpa_eligible = float(student.cgpa) >= float(job.min_cgpa)
+            else:
+                is_cgpa_eligible = False
+
+        return StudentJobResponse(
+            id=job.id,
+            title=job.title,
+            description=job.description,
+            role_category=job.role_category,
+            location=job.location,
+            employment_type=job.employment_type,
+            ctc_lpa=float(job.ctc_lpa) if job.ctc_lpa is not None else None,
+            min_cgpa=float(job.min_cgpa) if job.min_cgpa is not None else None,
+            deadline=job.deadline,
+            company=company_resp,
+            required_skills=skill_responses,
+            eligible_departments=dept_responses,
+            is_department_eligible=is_department_eligible,
+            is_cgpa_eligible=is_cgpa_eligible,
+            is_fully_eligible=is_department_eligible and is_cgpa_eligible,
+        )
+
+    async def list_student_jobs(
+        self,
+        user_id: int,
+        search: Optional[str] = None,
+        company_id: Optional[int] = None,
+        employment_type: Optional[str] = None,
+        eligible_only: bool = False,
+    ) -> List[StudentJobResponse]:
+        student = await self._students.get_by_user_id(user_id)
+        jobs = await self._repo.list_student_jobs(
+            search=search,
+            company_id=company_id,
+            employment_type=employment_type,
+        )
+
+        responses = [self._to_student_response(j, student) for j in jobs]
+        
+        if eligible_only:
+            responses = [r for r in responses if r.is_fully_eligible]
+            
+        return responses
+
+    async def get_student_job(self, user_id: int, job_id: int) -> StudentJobResponse:
+        student = await self._students.get_by_user_id(user_id)
+        job = await self._repo.get_student_job(job_id)
+        
+        if job is None:
+            raise NotFoundError(
+                "The specified job posting does not exist or is no longer available.",
+                error_code="JOB_NOT_FOUND",
+            )
+            
+        return self._to_student_response(job, student)

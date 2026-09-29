@@ -18,10 +18,12 @@ export interface JobSkillInfo {
 
 export interface JobRequiredSkill {
   id: number;
-  job_id: number;
+  job_id?: number;
   skill_id: number;
+  skill_name?: string;
+  category?: string;
   min_proficiency?: 'beginner' | 'intermediate' | 'advanced' | null;
-  skill: JobSkillInfo;
+  skill?: JobSkillInfo;
 }
 
 export interface JobDepartmentInfo {
@@ -33,9 +35,10 @@ export interface JobDepartmentInfo {
 
 export interface JobEligibleDepartment {
   id: number;
-  job_id: number;
+  job_id?: number;
   department_id: number;
-  department: JobDepartmentInfo;
+  department_name?: string;
+  department?: JobDepartmentInfo;
 }
 
 export interface JobListItem {
@@ -52,8 +55,9 @@ export interface JobListItem {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  required_skills_count: number;
-  eligible_departments_count: number;
+  required_skills_count?: number;
+  eligible_departments_count?: number;
+  required_skills: JobRequiredSkill[];
   eligible_departments: JobEligibleDepartment[];
 }
 

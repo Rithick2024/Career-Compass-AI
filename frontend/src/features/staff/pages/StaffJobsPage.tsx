@@ -642,7 +642,7 @@ export default function StaffJobsPage() {
                                     variant="outline"
                                     className="text-[10px] bg-primary/10 text-primary border-primary/20"
                                   >
-                                    {d.department?.code || d.department?.name}
+                                    {d.department?.code || d.department?.name || d.department_name}
                                   </Badge>
                                 ))}
                                 {job.eligible_departments.length > 2 && (
@@ -660,16 +660,33 @@ export default function StaffJobsPage() {
                           </div>
                         </TableCell>
 
-                        {/* Required Skills Count */}
+                        {/* Required Skills */}
                         <TableCell>
-                          <Badge
-                            variant="outline"
-                            className="text-xs bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
-                          >
-                            <Award className="w-3 h-3 mr-1 inline" />
-                            {job.required_skills_count}{' '}
-                            {job.required_skills_count === 1 ? 'Skill' : 'Skills'}
-                          </Badge>
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {job.required_skills && job.required_skills.length > 0 ? (
+                              <>
+                                {job.required_skills.slice(0, 2).map((s) => (
+                                  <Badge
+                                    key={s.id}
+                                    variant="outline"
+                                    className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+                                  >
+                                    {s.skill?.name || s.skill_name}
+                                  </Badge>
+                                ))}
+                                {job.required_skills.length > 2 && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] bg-muted text-muted-foreground border-border"
+                                  >
+                                    +{job.required_skills.length - 2} more
+                                  </Badge>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">None specified</span>
+                            )}
+                          </div>
                         </TableCell>
 
                         {/* Deadline */}
@@ -1447,7 +1464,7 @@ export default function StaffJobsPage() {
                           variant="outline"
                           className="bg-primary/10 text-primary border-primary/20 text-xs py-1 px-2"
                         >
-                          {d.department?.name} ({d.department?.code})
+                          {d.department?.name || d.department_name} {d.department?.code ? `(${d.department.code})` : ''}
                         </Badge>
                       ))}
                     </div>
@@ -1469,7 +1486,7 @@ export default function StaffJobsPage() {
                           key={s.id}
                           className="flex items-center justify-between p-2 rounded-md border border-border bg-muted/30 text-xs"
                         >
-                          <span className="font-medium text-foreground">{s.skill?.name}</span>
+                          <span className="font-medium text-foreground">{s.skill?.name || s.skill_name}</span>
                           {s.min_proficiency ? (
                             <Badge
                               variant="outline"

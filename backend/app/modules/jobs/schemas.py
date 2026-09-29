@@ -124,3 +124,35 @@ class JobUpdateRequest(BaseModel):
 
 class JobStatusUpdateRequest(BaseModel):
     is_active: bool
+
+
+class StudentCompanyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    industry: Optional[str] = None
+    location: Optional[str] = None
+    website: Optional[str] = None
+
+
+class StudentJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    description: Optional[str] = None
+    role_category: Optional[str] = None
+    location: Optional[str] = None
+    employment_type: str = "Full-time"
+    ctc_lpa: Optional[float] = None
+    min_cgpa: Optional[float] = None
+    deadline: Optional[datetime] = None
+    
+    company: StudentCompanyResponse
+    required_skills: List[JobRequiredSkillResponse] = Field(default_factory=list)
+    eligible_departments: List[JobEligibleDepartmentResponse] = Field(default_factory=list)
+    
+    is_department_eligible: bool = False
+    is_cgpa_eligible: bool = False
+    is_fully_eligible: bool = False

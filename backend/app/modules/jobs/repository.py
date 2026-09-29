@@ -5,7 +5,8 @@ Job repository — SQLAlchemy query execution for jobs, required skills, and eli
 from datetime import datetime, timezone
 from typing import Optional, Sequence
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, and_
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.companies.models import Company
@@ -148,3 +149,57 @@ class JobRepository:
         await self._db.flush()
         await self._db.refresh(job)
         return job
+
+    def get_active_student_jobs_query(self):
+        now = datetime.now(timezone.utc)
+        return (
+            select(Job)
+            .join(Company, Job.company_id == Company.id)
+            .where(
+                and_(
+                    Job.is_active == True,
+                    Company.is_active == True,
+                    or_(Job.deadline.is_(None), Job.deadline >= now),
+                )
+            )
+            .options(
+                joinedload(Job.company),
+                joinedload(Job.required_skills).joinedload(JobRequiredSkill.skill),
+                joinedload(Job.eligible_departments).joinedload(JobEligibleDepartment.department),
+            )
+        )
+
+    async def list_student_jobs(
+        self,
+        search: Optional[str] = None,
+        company_id: Optional[int] = None,
+        employment_type: Optional[str] = None,
+    ) -> Sequence[Job]:
+        query = self.get_active_student_jobs_query()
+
+        if search and search.strip():
+            term = f"%{search.strip()}%"
+            query = query.where(
+                or_(
+                    Job.title.ilike(term),
+                    Company.name.ilike(term),
+                    Job.role_category.ilike(term),
+                )
+            )
+
+        if company_id is not None:
+            query = query.where(Job.company_id == company_id)
+
+        if employment_type and employment_type.strip():
+            query = query.where(Job.employment_type.ilike(employment_type.strip()))
+
+        query = query.order_by(Job.created_at.desc(), Job.id.desc())
+        result = await self._db.execute(query)
+        # Using unique() is necessary when using joinedload with collections
+        return result.scalars().unique().all()
+
+    async def get_student_job(self, job_id: int) -> Optional[Job]:
+        query = self.get_active_student_jobs_query().where(Job.id == job_id)
+        result = await self._db.execute(query)
+        return result.scalars().unique().one_or_none()
+
