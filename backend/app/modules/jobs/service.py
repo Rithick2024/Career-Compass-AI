@@ -2,7 +2,7 @@
 Job service layer — business logic, validation, and transaction management.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,8 +22,23 @@ from app.modules.jobs.schemas import (
     StudentCompanyResponse,
     StudentJobResponse,
 )
+from app.modules.job_rounds.schemas import JobRoundResponse
 from app.modules.skills.repository import SkillRepository
 from app.modules.students.repository import StudentRepository
+
+
+def get_job_derived_status(job: Job, now: Optional[datetime] = None) -> str:
+    if now is None:
+        now = datetime.now(timezone.utc)
+    if not job.is_active or (job.company and not job.company.is_active):
+        return "Inactive"
+    if job.application_start_at and job.application_start_at > now:
+        return "Upcoming"
+    if job.deadline and job.deadline <= now:
+        return "Closed"
+    if job.deadline and now < job.deadline <= (now + timedelta(hours=24)):
+        return "Closing Soon"
+    return "Open"
 
 
 class JobService:
@@ -37,6 +52,7 @@ class JobService:
     def _to_response(self, job: Job) -> JobResponse:
         now = datetime.now(timezone.utc)
         is_expired = bool(job.deadline and job.deadline < now)
+        derived_status = get_job_derived_status(job, now)
 
         company_resp = CompanyResponse.model_validate(job.company)
 
@@ -60,6 +76,11 @@ class JobService:
             for jed in job.eligible_departments
         ]
 
+        round_responses = [
+            JobRoundResponse.model_validate(r)
+            for r in sorted(job.rounds, key=lambda x: (x.round_number, x.created_at))
+        ] if job.rounds else []
+
         return JobResponse(
             id=job.id,
             company_id=job.company_id,
@@ -71,11 +92,16 @@ class JobService:
             employment_type=job.employment_type,
             ctc_lpa=float(job.ctc_lpa) if job.ctc_lpa is not None else None,
             min_cgpa=float(job.min_cgpa) if job.min_cgpa is not None else None,
+            application_start_at=job.application_start_at,
             deadline=job.deadline,
+            work_mode=job.work_mode,
+            instructions=job.instructions,
             is_active=job.is_active,
             is_expired=is_expired,
+            derived_status=derived_status,
             required_skills=skill_responses,
             eligible_departments=dept_responses,
+            rounds=round_responses,
             created_at=job.created_at,
             updated_at=job.updated_at,
         )
@@ -160,7 +186,10 @@ class JobService:
             "employment_type": data.employment_type or "Full-time",
             "ctc_lpa": data.ctc_lpa,
             "min_cgpa": data.min_cgpa,
+            "application_start_at": data.application_start_at,
             "deadline": data.deadline,
+            "work_mode": data.work_mode,
+            "instructions": data.instructions,
         }
 
         try:
@@ -308,6 +337,14 @@ class JobService:
             else:
                 is_cgpa_eligible = False
 
+        derived_status = get_job_derived_status(job)
+
+        round_responses = [
+            JobRoundResponse.model_validate(r)
+            for r in sorted(job.rounds, key=lambda x: (x.round_number, x.created_at))
+            if r.is_active
+        ] if job.rounds else []
+
         return StudentJobResponse(
             id=job.id,
             title=job.title,
@@ -317,10 +354,15 @@ class JobService:
             employment_type=job.employment_type,
             ctc_lpa=float(job.ctc_lpa) if job.ctc_lpa is not None else None,
             min_cgpa=float(job.min_cgpa) if job.min_cgpa is not None else None,
+            application_start_at=job.application_start_at,
             deadline=job.deadline,
+            work_mode=job.work_mode,
+            instructions=job.instructions,
+            derived_status=derived_status,
             company=company_resp,
             required_skills=skill_responses,
             eligible_departments=dept_responses,
+            rounds=round_responses,
             is_department_eligible=is_department_eligible,
             is_cgpa_eligible=is_cgpa_eligible,
             is_fully_eligible=is_department_eligible and is_cgpa_eligible,

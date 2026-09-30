@@ -42,12 +42,15 @@ api_router.include_router(resumes_router)
 from app.modules.placements.router import staff_router as staff_placements_router, student_router as student_placements_router
 from app.modules.application_rounds.router import staff_router as staff_rounds_router, student_router as student_rounds_router
 
+from app.modules.job_rounds.router import staff_job_rounds_router
+
 api_router.include_router(student_applications_router, prefix="/student/applications", tags=["student-applications"])
 api_router.include_router(staff_applications_router, prefix="/staff/applications", tags=["staff-applications"])
 api_router.include_router(student_placements_router)
 api_router.include_router(staff_placements_router)
 api_router.include_router(student_rounds_router)
 api_router.include_router(staff_rounds_router)
+api_router.include_router(staff_job_rounds_router)
 
 from app.modules.analytics.router import router as analytics_router
 api_router.include_router(analytics_router, tags=["analytics"])

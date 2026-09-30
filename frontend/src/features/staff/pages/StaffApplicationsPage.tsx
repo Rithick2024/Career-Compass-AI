@@ -513,15 +513,6 @@ export default function StaffApplicationsPage() {
                     <Clock className="h-5 w-5 text-primary" />
                     Recruitment Timeline
                   </h4>
-                  {!showRoundForm && (
-                    <Button size="sm" onClick={() => {
-                      setShowRoundForm(true);
-                      setEditingRoundId(null);
-                      roundForm.reset({ round_number: rounds.length + 1, round_type: 'Technical Interview', status: 'Scheduled', result: 'Pending' });
-                    }}>
-                      <Plus className="h-4 w-4 mr-1" /> Add Round
-                    </Button>
-                  )}
                 </div>
 
                 {showRoundForm ? (

@@ -1,4 +1,5 @@
 from typing import List
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from asyncpg.exceptions import UniqueViolationError
@@ -16,6 +17,13 @@ from app.modules.applications.schemas import (
 from app.modules.jobs.repository import JobRepository
 from app.modules.resumes.repository import ResumeRepository
 from app.modules.students.repository import StudentRepository
+from app.modules.job_rounds.models import JobRound
+from app.modules.application_rounds.models import (
+    ApplicationRound,
+    StudentAttendance,
+    StaffVerification,
+    RoundResult,
+)
 
 
 class ApplicationService:
@@ -111,15 +119,48 @@ class ApplicationService:
         if not resume:
             raise NotFoundError("The specified resume does not exist or does not belong to you.", error_code="RESUME_NOT_FOUND")
 
+        # Fetch active job rounds for template snapshot creation
+        job_rounds_stmt = (
+            select(JobRound)
+            .where(JobRound.job_id == data.job_id, JobRound.is_active == True)
+            .order_by(JobRound.round_number.asc())
+        )
+        active_job_rounds = (await self._db.scalars(job_rounds_stmt)).all()
+
+        initial_status = ApplicationStatus.INTERVIEW if active_job_rounds else ApplicationStatus.PENDING
+
         app_obj = Application(
             student_id=student.id,
             job_id=data.job_id,
             resume_id=data.resume_id,
-            status=ApplicationStatus.PENDING,
+            status=initial_status,
         )
 
         try:
-            app_obj = await self._repo.create(app_obj)
+            self._db.add(app_obj)
+            await self._db.flush()
+
+            for jr in active_job_rounds:
+                app_round = ApplicationRound(
+                    application_id=app_obj.id,
+                    job_round_id=jr.id,
+                    round_number=jr.round_number,
+                    round_type=jr.round_type,
+                    title=jr.title,
+                    description=jr.description,
+                    schedule_type=jr.schedule_type,
+                    available_from=jr.available_from,
+                    available_until=jr.available_until,
+                    duration_minutes=jr.duration_minutes,
+                    meeting_link=jr.meeting_link,
+                    test_link=jr.test_link,
+                    instructions=jr.instructions,
+                    student_attendance=StudentAttendance.NOT_REPORTED,
+                    staff_verification=StaffVerification.PENDING,
+                    result=RoundResult.PENDING,
+                )
+                self._db.add(app_round)
+
             await self._db.commit()
             
             # Need to return fully loaded object
@@ -151,14 +192,28 @@ class ApplicationService:
 
     async def withdraw_application(self, user_id: int, application_id: int) -> StudentApplicationResponse:
         student = await self._students.get_by_user_id(user_id)
+        if not student:
+            raise NotFoundError("Student profile not found.", error_code="STUDENT_NOT_FOUND")
+
         app = await self._repo.get_by_id_for_student(application_id, student.id)
         if not app:
             raise NotFoundError("Application not found.", error_code="APPLICATION_NOT_FOUND")
 
-        if app.status not in (ApplicationStatus.PENDING, ApplicationStatus.REVIEWING):
+        if app.placement is not None:
+            raise BadRequestError("Cannot withdraw application after placement.", error_code="INVALID_STATUS_TRANSITION")
+
+        if app.status not in (ApplicationStatus.PENDING, ApplicationStatus.REVIEWING, ApplicationStatus.INTERVIEW):
             raise BadRequestError(f"Cannot withdraw application in {app.status.value} status.", error_code="INVALID_STATUS_TRANSITION")
 
         app.status = ApplicationStatus.WITHDRAWN
+
+        # Cancel future/uncompleted rounds
+        if app.rounds:
+            from app.modules.application_rounds.models import RoundStatus, RoundResult
+            for rnd in app.rounds:
+                if rnd.result is None or rnd.result == RoundResult.PENDING:
+                    rnd.status = RoundStatus.CANCELLED
+
         await self._db.commit()
 
         # Re-fetch fully loaded

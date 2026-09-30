@@ -507,6 +507,28 @@ export default function StudentJobsPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* High-level Recruitment Process */}
+                  {selectedJob.rounds && selectedJob.rounds.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t">
+                      <h3 className="text-sm font-semibold flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-primary" />
+                        Recruitment Process ({selectedJob.rounds.length} Rounds)
+                      </h3>
+                      <div className="space-y-2 bg-muted/20 p-3 rounded-md border border-border">
+                        {selectedJob.rounds.map((r) => (
+                          <div key={r.id} className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-foreground">
+                              {r.round_number}. {r.title || r.round_type}
+                            </span>
+                            <Badge variant="outline" className="text-[10px]">
+                              {r.round_type}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end pt-4 border-t mt-4 gap-2">

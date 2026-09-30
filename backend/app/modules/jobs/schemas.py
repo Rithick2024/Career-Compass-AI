@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.modules.companies.schemas import CompanyResponse
 from app.modules.students.schemas import DepartmentOut
 from app.shared.enums import ProficiencyLevel
+from app.modules.job_rounds.schemas import JobRoundResponse
 
 
 class JobRequiredSkillRequest(BaseModel):
@@ -48,11 +49,16 @@ class JobResponse(BaseModel):
     employment_type: str = "Full-time"
     ctc_lpa: Optional[float] = None
     min_cgpa: Optional[float] = None
+    application_start_at: Optional[datetime] = None
     deadline: Optional[datetime] = None
+    work_mode: Optional[str] = None
+    instructions: Optional[str] = None
     is_active: bool
     is_expired: bool = False
+    derived_status: str = "Open"
     required_skills: List[JobRequiredSkillResponse] = Field(default_factory=list)
     eligible_departments: List[JobEligibleDepartmentResponse] = Field(default_factory=list)
+    rounds: List[JobRoundResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -66,7 +72,10 @@ class JobCreateRequest(BaseModel):
     employment_type: str = Field(default="Full-time", max_length=50)
     ctc_lpa: Optional[float] = Field(default=None, ge=0)
     min_cgpa: Optional[float] = Field(default=None, ge=0, le=10)
+    application_start_at: Optional[datetime] = None
     deadline: Optional[datetime] = None
+    work_mode: Optional[str] = Field(default=None, max_length=50)
+    instructions: Optional[str] = Field(default=None, max_length=5000)
     required_skills: List[JobRequiredSkillRequest] = Field(default_factory=list)
     eligible_department_ids: List[int] = Field(default_factory=list)
 
@@ -78,7 +87,7 @@ class JobCreateRequest(BaseModel):
             raise ValueError("Job title cannot be blank.")
         return value
 
-    @field_validator("description", "role_category", "location", mode="before")
+    @field_validator("description", "role_category", "location", "work_mode", "instructions", mode="before")
     @classmethod
     def empty_str_to_none(cls, value: Any) -> Any:
         if isinstance(value, str):
@@ -99,7 +108,10 @@ class JobUpdateRequest(BaseModel):
     employment_type: Optional[str] = Field(default=None, max_length=50)
     ctc_lpa: Optional[float] = Field(default=None, ge=0)
     min_cgpa: Optional[float] = Field(default=None, ge=0, le=10)
+    application_start_at: Optional[datetime] = None
     deadline: Optional[datetime] = None
+    work_mode: Optional[str] = Field(default=None, max_length=50)
+    instructions: Optional[str] = Field(default=None, max_length=5000)
     required_skills: Optional[List[JobRequiredSkillRequest]] = None
     eligible_department_ids: Optional[List[int]] = None
 
@@ -112,7 +124,7 @@ class JobUpdateRequest(BaseModel):
                 raise ValueError("Job title cannot be blank.")
         return value
 
-    @field_validator("description", "role_category", "location", mode="before")
+    @field_validator("description", "role_category", "location", "work_mode", "instructions", mode="before")
     @classmethod
     def empty_str_to_none(cls, value: Any) -> Any:
         if isinstance(value, str):
@@ -147,11 +159,16 @@ class StudentJobResponse(BaseModel):
     employment_type: str = "Full-time"
     ctc_lpa: Optional[float] = None
     min_cgpa: Optional[float] = None
+    application_start_at: Optional[datetime] = None
     deadline: Optional[datetime] = None
+    work_mode: Optional[str] = None
+    instructions: Optional[str] = None
+    derived_status: str = "Open"
     
     company: StudentCompanyResponse
     required_skills: List[JobRequiredSkillResponse] = Field(default_factory=list)
     eligible_departments: List[JobEligibleDepartmentResponse] = Field(default_factory=list)
+    rounds: List[JobRoundResponse] = Field(default_factory=list)
     
     is_department_eligible: bool = False
     is_cgpa_eligible: bool = False

@@ -63,6 +63,7 @@ import {
 import { companyService, Company } from '../services/company.service';
 import { departmentService, Department } from '../services/department.service';
 import { staffSkillService, StaffSkill } from '../services/staff-skills.service';
+import { JobRecruitmentWorkflowEditor } from '../components/JobRecruitmentWorkflowEditor';
 
 interface RequiredSkillFormItem {
   skill_id: number;
@@ -1504,6 +1505,12 @@ export default function StaffJobsPage() {
                     <p className="text-xs text-muted-foreground italic">No specific skill prerequisites specified.</p>
                   )}
                 </div>
+
+                {/* Recruitment Workflow Section */}
+                <JobRecruitmentWorkflowEditor
+                  jobId={jobDetail.id}
+                  initialRounds={jobDetail.rounds}
+                />
 
                 <DialogFooter className="pt-4 border-t border-border">
                   <Button variant="outline" onClick={() => setIsDetailOpen(false)}>

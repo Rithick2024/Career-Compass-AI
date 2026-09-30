@@ -122,16 +122,17 @@ async def test_application_rounds_lifecycle(client: AsyncClient, db_session, use
     r2_payload = {
         "round_number": 2,
         "round_type": "Technical Interview",
+        "available_from": "2026-10-16T10:00:00Z",
         "status": "Completed",
         "result": "Failed"
     }
     r2_res = await client.post(f"/api/v1/staff/applications/{app_id}/rounds", headers=staff_headers, json=r2_payload)
     assert r2_res.status_code == 201
 
-    # Application status should still be Pending (or whatever it was)
+    # Application status should now be Interview after round creation
     app_res = await client.get(f"/api/v1/staff/applications/{app_id}", headers=staff_headers)
     assert app_res.status_code == 200
-    assert app_res.json()["status"] == "Pending" # Staff must manually update to Rejected
+    assert app_res.json()["status"] == "Interview"
 
     # List rounds orders by round number
     list_res = await client.get(f"/api/v1/staff/applications/{app_id}/rounds", headers=staff_headers)

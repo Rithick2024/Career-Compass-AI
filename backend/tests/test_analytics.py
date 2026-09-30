@@ -153,7 +153,7 @@ async def test_student_analytics_isolation(
     await db_session.flush()
 
     future_date = datetime.now(timezone.utc) + timedelta(days=2)
-    round1 = ApplicationRound(application_id=app1.id, round_number=1, round_type=RoundType.TECHNICAL_INTERVIEW, status=RoundStatus.SCHEDULED, scheduled_at=future_date)
+    round1 = ApplicationRound(application_id=app1.id, round_number=1, round_type=RoundType.TECHNICAL_INTERVIEW, status=RoundStatus.SCHEDULED, available_from=future_date)
     db_session.add(round1)
     
     placement = Placement(application_id=app1.id, offer_accepted=True, final_package_ctc=15.0, placement_date=datetime.now(timezone.utc).date())

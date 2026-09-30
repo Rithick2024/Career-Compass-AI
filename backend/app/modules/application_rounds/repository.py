@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
-from app.modules.application_rounds.models import ApplicationRound
+from app.modules.application_rounds.models import ApplicationRound, ScheduleType
 from app.modules.application_rounds.schemas import ApplicationRoundCreate, ApplicationRoundUpdate
 
 
@@ -39,10 +39,13 @@ class ApplicationRoundRepository:
             round_number=data.round_number,
             round_type=data.round_type,
             title=data.title,
+            schedule_type=data.schedule_type,
+            available_from=data.available_from,
+            available_until=data.available_until if data.schedule_type == ScheduleType.AVAILABILITY_WINDOW else None,
             status=data.status,
             result=data.result,
-            scheduled_at=data.scheduled_at,
             completed_at=data.completed_at,
+            duration_minutes=data.duration_minutes if data.duration_minutes is not None else 60,
             external_link=str(data.external_link) if data.external_link else None,
             notes=data.notes,
         )

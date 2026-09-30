@@ -126,7 +126,7 @@ class AnalyticsRepository:
                 ApplicationRound.round_type,
                 Job.title.label("job_title"),
                 Company.name.label("company_name"),
-                ApplicationRound.scheduled_at,
+                ApplicationRound.available_from.label("scheduled_at"),
                 ApplicationRound.status
             )
             .join(Application, Application.id == ApplicationRound.application_id)
@@ -135,9 +135,9 @@ class AnalyticsRepository:
             .where(
                 Application.student_id == student_id,
                 ApplicationRound.status == RoundStatus.SCHEDULED,
-                ApplicationRound.scheduled_at > now
+                ApplicationRound.available_from > now
             )
-            .order_by(ApplicationRound.scheduled_at.asc())
+            .order_by(ApplicationRound.available_from.asc())
             .limit(limit)
         )
         result = await self._session.execute(stmt)

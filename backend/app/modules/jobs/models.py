@@ -4,7 +4,7 @@ Job, JobRequiredSkill, and JobEligibleDepartment ORM models.
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -24,6 +24,9 @@ from app.modules.companies.models import Company
 from app.modules.skills.models import Skill
 from app.modules.students.models import Department
 from app.shared.enums import ProficiencyLevel
+
+if TYPE_CHECKING:
+    from app.modules.job_rounds.models import JobRound
 
 
 class Job(Base):
@@ -46,9 +49,15 @@ class Job(Base):
     ctc_lpa: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
     min_cgpa: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 2), nullable=True)
 
+    application_start_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     deadline: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+
+    work_mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true", index=True
@@ -71,6 +80,9 @@ class Job(Base):
     )
     eligible_departments: Mapped[list["JobEligibleDepartment"]] = relationship(
         lazy="selectin", cascade="all, delete-orphan"
+    )
+    rounds: Mapped[list["JobRound"]] = relationship(
+        lazy="selectin", cascade="all, delete-orphan", order_by="JobRound.round_number"
     )
 
     def __repr__(self) -> str:  # pragma: no cover

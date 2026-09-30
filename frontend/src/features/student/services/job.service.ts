@@ -1,4 +1,5 @@
 import api from '@/api/axios';
+import { JobRound } from '@/features/staff/services/job-round.service';
 
 export interface StudentCompany {
   id: number;
@@ -36,6 +37,7 @@ export interface StudentJob {
   company: StudentCompany;
   required_skills: StudentJobRequiredSkill[];
   eligible_departments: StudentJobEligibleDepartment[];
+  rounds?: JobRound[];
 
   is_department_eligible: boolean;
   is_cgpa_eligible: boolean;

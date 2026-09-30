@@ -159,6 +159,7 @@ class JobRepository:
                 and_(
                     Job.is_active == True,
                     Company.is_active == True,
+                    or_(Job.application_start_at.is_(None), Job.application_start_at <= now),
                     or_(Job.deadline.is_(None), Job.deadline >= now),
                 )
             )

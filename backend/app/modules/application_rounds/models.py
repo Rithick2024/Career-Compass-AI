@@ -21,6 +21,7 @@ from app.db.database import Base
 
 if TYPE_CHECKING:
     from app.modules.applications.models import Application
+    from app.modules.job_rounds.models import JobRound
 
 
 class RoundType(str, Enum):
@@ -47,6 +48,23 @@ class RoundResult(str, Enum):
     PASSED = "Passed"
     FAILED = "Failed"
     NOT_ATTENDED = "Not Attended"
+
+
+class StudentAttendance(str, Enum):
+    NOT_REPORTED = "NOT_REPORTED"
+    ATTENDED = "ATTENDED"
+    ABSENT = "ABSENT"
+
+
+class StaffVerification(str, Enum):
+    PENDING = "PENDING"
+    VERIFIED = "VERIFIED"
+    REJECTED = "REJECTED"
+
+
+class ScheduleType(str, Enum):
+    FIXED_TIME = "FIXED_TIME"
+    AVAILABILITY_WINDOW = "AVAILABILITY_WINDOW"
 
 
 class ApplicationRound(Base):
@@ -96,8 +114,64 @@ class ApplicationRound(Base):
         nullable=True
     )
 
-    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    schedule_type: Mapped[ScheduleType] = mapped_column(
+        SAEnum(
+            ScheduleType,
+            name="schedule_type_enum",
+            native_enum=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        server_default=ScheduleType.FIXED_TIME.value,
+        default=ScheduleType.FIXED_TIME
+    )
+
+    available_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    available_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    duration_minutes: Mapped[int] = mapped_column(nullable=False, server_default="60", default=60)
+
+    student_attendance: Mapped[StudentAttendance] = mapped_column(
+        SAEnum(
+            StudentAttendance,
+            name="student_attendance_enum",
+            native_enum=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        server_default=StudentAttendance.NOT_REPORTED.value,
+        default=StudentAttendance.NOT_REPORTED
+    )
+    student_action_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    staff_verification: Mapped[StaffVerification] = mapped_column(
+        SAEnum(
+            StaffVerification,
+            name="staff_verification_enum",
+            native_enum=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        server_default=StaffVerification.PENDING.value,
+        default=StaffVerification.PENDING
+    )
+    staff_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    staff_verified_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    rescheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reschedule_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    job_round_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("job_rounds.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    meeting_link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    test_link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     external_link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -113,6 +187,12 @@ class ApplicationRound(Base):
     )
 
     application: Mapped["Application"] = relationship(back_populates="rounds", lazy="selectin")
+    job_round: Mapped[Optional["JobRound"]] = relationship(lazy="selectin")
+
+    @property
+    def scheduled_at(self) -> Optional[datetime]:
+        return self.available_from
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<ApplicationRound id={self.id} application_id={self.application_id} round_number={self.round_number}>"
+

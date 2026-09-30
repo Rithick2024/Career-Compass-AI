@@ -1,4 +1,5 @@
 import api from '@/api/axios';
+import { JobRound } from './job-round.service';
 
 export interface JobCompany {
   id: number;
@@ -59,6 +60,7 @@ export interface JobListItem {
   eligible_departments_count?: number;
   required_skills: JobRequiredSkill[];
   eligible_departments: JobEligibleDepartment[];
+  rounds?: JobRound[];
 }
 
 export interface JobDetail {
@@ -78,6 +80,7 @@ export interface JobDetail {
   updated_at: string;
   required_skills: JobRequiredSkill[];
   eligible_departments: JobEligibleDepartment[];
+  rounds?: JobRound[];
 }
 
 export interface JobRequiredSkillInput {
