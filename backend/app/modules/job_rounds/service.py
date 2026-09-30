@@ -105,16 +105,5 @@ class JobRoundService:
         if not db_obj or db_obj.job_id != job_id:
             raise NotFoundError("Job round not found")
 
-        # Check if any application rounds reference this job round
-        stmt = select(func.count(ApplicationRound.id)).where(ApplicationRound.job_round_id == round_id)
-        res = await self._round_repo.session.execute(stmt)
-        ref_count = res.scalar_one_or_none() or 0
-
-        if ref_count > 0:
-            # Soft deactivate to preserve historical application round references
-            db_obj.is_active = False
-            await self._round_repo.session.commit()
-            return {"message": "Job round deactivated because historical application references exist.", "deactivated": True}
-        else:
-            await self._round_repo.delete(db_obj)
-            return {"message": "Job round deleted successfully.", "deleted": True}
+        await self._round_repo.delete(db_obj)
+        return {"message": "Job round deleted successfully.", "deleted": True}

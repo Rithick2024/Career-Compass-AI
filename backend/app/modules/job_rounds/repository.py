@@ -75,5 +75,14 @@ class JobRoundRepository:
         return db_obj
 
     async def delete(self, db_obj: JobRound) -> None:
+        from sqlalchemy import update
+        from app.modules.application_rounds.models import ApplicationRound
+
+        stmt = (
+            update(ApplicationRound)
+            .where(ApplicationRound.job_round_id == db_obj.id)
+            .values(job_round_id=None)
+        )
+        await self.session.execute(stmt)
         await self.session.delete(db_obj)
         await self.session.commit()

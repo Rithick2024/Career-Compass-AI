@@ -326,3 +326,137 @@ async def test_reschedule_does_not_affect_job_round_or_other_students(client, db
     # Check Student 2 application round remains unchanged
     rounds_2 = (await client.get(f"/api/v1/staff/applications/{app_2}/rounds", headers=staff_h)).json()
     assert rounds_2[0]["available_from"] != new_from
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_definitive_snapshot_isolation_and_job_round_deletion(client, db_session, user_repo):
+    """
+    Definitive validation test matching TASK 3 requirements:
+    1. Create Job A.
+    2. Add JobRound 1: Online Assessment.
+    3. Add JobRound 2: Technical Interview, Schedule = Oct 5, 11:00.
+    4. Student A applies.
+    5. Verify Student A receives two ApplicationRounds.
+    6. Modify JobRound 2: Schedule = Oct 6, 15:00.
+    7. Verify Student A's ApplicationRound 2 still has Oct 5, 11:00.
+    8. Student B applies.
+    9. Verify Student B's ApplicationRound 2 has Oct 6, 15:00.
+    10. Delete JobRound 2.
+    11. Verify Student A's and Student B's ApplicationRound 2 records still exist.
+    12. Verify snapshot data remains intact.
+    13. Verify job_round_id becomes NULL.
+    """
+    uid = uuid.uuid4().hex[:6]
+    staff_h = await _get_staff_headers(client, db_session, user_repo, f"staff_def_{uid}@test.com")
+    _, student_a_h = await _register_and_login(client, f"student_a_def_{uid}@test.com", "student")
+    _, student_b_h = await _register_and_login(client, f"student_b_def_{uid}@test.com", "student")
+
+    # 1. Create Job A
+    _, job_id = await setup_company_and_job(client, staff_h)
+
+    # 2. Add JobRound 1: Online Assessment
+    jr1_res = await client.post(
+        f"/api/v1/staff/jobs/{job_id}/rounds",
+        headers=staff_h,
+        json={
+            "round_number": 1,
+            "round_type": RoundType.ONLINE_ASSESSMENT.value,
+            "title": "Online Assessment",
+            "schedule_type": "FIXED_TIME",
+            "available_from": "2026-10-01T10:00:00Z",
+            "duration_minutes": 60,
+        },
+    )
+    assert jr1_res.status_code == 201
+
+    # 3. Add JobRound 2: Technical Interview. Schedule = Oct 5, 11:00
+    oct_5_str = "2026-10-05T11:00:00Z"
+    jr2_res = await client.post(
+        f"/api/v1/staff/jobs/{job_id}/rounds",
+        headers=staff_h,
+        json={
+            "round_number": 2,
+            "round_type": RoundType.TECHNICAL_INTERVIEW.value,
+            "title": "Technical Interview",
+            "schedule_type": "FIXED_TIME",
+            "available_from": oct_5_str,
+            "duration_minutes": 60,
+            "instructions": "Join 10 minutes early",
+        },
+    )
+    assert jr2_res.status_code == 201
+    jr2_id = jr2_res.json()["id"]
+
+    # 4. Student A applies
+    res_a_id = await upload_resume(client, student_a_h)
+    app_a_res = await client.post(
+        "/api/v1/student/applications",
+        headers=student_a_h,
+        json={"job_id": job_id, "resume_id": res_a_id},
+    )
+    assert app_a_res.status_code == 201
+    app_a_id = app_a_res.json()["id"]
+
+    # 5. Verify Student A receives two ApplicationRounds
+    rounds_a = (await client.get(f"/api/v1/student/applications/{app_a_id}/rounds", headers=student_a_h)).json()
+    assert len(rounds_a) == 2
+    assert rounds_a[0]["title"] == "Online Assessment"
+    assert rounds_a[1]["title"] == "Technical Interview"
+    assert rounds_a[1]["available_from"].startswith("2026-10-05T11:00")
+    assert rounds_a[1]["instructions"] == "Join 10 minutes early"
+    assert rounds_a[1]["job_round_id"] == jr2_id
+
+    # 6. Modify JobRound 2: Schedule = Oct 6, 15:00
+    oct_6_str = "2026-10-06T15:00:00Z"
+    mod_res = await client.patch(
+        f"/api/v1/staff/jobs/{job_id}/rounds/{jr2_id}",
+        headers=staff_h,
+        json={"available_from": oct_6_str},
+    )
+    assert mod_res.status_code == 200
+
+    # 7. Verify Student A's ApplicationRound 2 still has: Oct 5, 11:00
+    rounds_a_after = (await client.get(f"/api/v1/student/applications/{app_a_id}/rounds", headers=student_a_h)).json()
+    assert rounds_a_after[1]["available_from"].startswith("2026-10-05T11:00")
+
+    # 8. Student B applies
+    res_b_id = await upload_resume(client, student_b_h)
+    app_b_res = await client.post(
+        "/api/v1/student/applications",
+        headers=student_b_h,
+        json={"job_id": job_id, "resume_id": res_b_id},
+    )
+    assert app_b_res.status_code == 201
+    app_b_id = app_b_res.json()["id"]
+
+    # 9. Verify Student B's ApplicationRound 2 has: Oct 6, 15:00
+    rounds_b = (await client.get(f"/api/v1/student/applications/{app_b_id}/rounds", headers=student_b_h)).json()
+    assert rounds_b[1]["available_from"].startswith("2026-10-06T15:00")
+    assert rounds_b[1]["job_round_id"] == jr2_id
+
+    # 10. Delete JobRound 2
+    del_res = await client.delete(
+        f"/api/v1/staff/jobs/{job_id}/rounds/{jr2_id}",
+        headers=staff_h,
+    )
+    assert del_res.status_code == 200
+
+    # 11. Verify Student A's and Student B's ApplicationRound 2 records still exist
+    rounds_a_final = (await client.get(f"/api/v1/student/applications/{app_a_id}/rounds", headers=student_a_h)).json()
+    rounds_b_final = (await client.get(f"/api/v1/student/applications/{app_b_id}/rounds", headers=student_b_h)).json()
+
+    assert len(rounds_a_final) == 2
+    assert len(rounds_b_final) == 2
+
+    # 12. Verify snapshot data remains intact
+    assert rounds_a_final[1]["title"] == "Technical Interview"
+    assert rounds_a_final[1]["available_from"].startswith("2026-10-05T11:00")
+    assert rounds_a_final[1]["instructions"] == "Join 10 minutes early"
+
+    assert rounds_b_final[1]["title"] == "Technical Interview"
+    assert rounds_b_final[1]["available_from"].startswith("2026-10-06T15:00")
+
+    # 13. Verify job_round_id becomes NULL
+    assert rounds_a_final[1]["job_round_id"] is None
+    assert rounds_b_final[1]["job_round_id"] is None
+
