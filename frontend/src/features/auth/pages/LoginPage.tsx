@@ -87,9 +87,9 @@ export default function LoginPage() {
 
           <div className="grid gap-4">
             {[
-              { icon: Target, title: 'AI Job Matching', desc: '94% match accuracy with personalized recommendations' },
-              { icon: TrendingUp, title: 'Readiness Score', desc: 'Track your placement readiness in real-time' },
-              { icon: ShieldCheck, title: 'Verified Companies', desc: '500+ trusted recruiters actively hiring' },
+              { icon: Target, title: 'Skill Match Analysis', desc: 'Evaluate skill alignment and eligibility for active jobs' },
+              { icon: TrendingUp, title: 'Placement Readiness Score', desc: 'Track your placement readiness across core pillars' },
+              { icon: ShieldCheck, title: 'Verified Companies', desc: 'Trusted recruiters actively hiring on platform' },
             ].map((feature) => (
               <div key={feature.title} className="flex items-start gap-3 rounded-xl bg-white/10 p-3 backdrop-blur-sm">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">

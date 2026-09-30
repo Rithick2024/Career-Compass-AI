@@ -119,17 +119,26 @@ class ResumeService:
         old_file_path = resume.file_path
         was_default = resume.is_default
 
-        await self._resumes.delete(resume)
-
-        # If deleted resume was default, reassign default to another remaining resume
-        if was_default:
-            next_default = await self._resumes.get_latest_remaining_by_student_id(
-                student_id, exclude_id=resume_id
-            )
-            if next_default:
-                next_default.is_default = True
-
-        await self._db.commit()
+        try:
+            await self._resumes.delete(resume)
+            # If deleted resume was default, reassign default to another remaining resume
+            if was_default:
+                next_default = await self._resumes.get_latest_remaining_by_student_id(
+                    student_id, exclude_id=resume_id
+                )
+                if next_default:
+                    next_default.is_default = True
+            await self._db.commit()
+        except Exception as e:
+            await self._db.rollback()
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(e, IntegrityError) and ("fk_applications_resume_id_resumes" in str(e).lower() or "update or delete on table" in str(e).lower()):
+                from app.core.exceptions import ConflictError
+                raise ConflictError(
+                    "This resume is linked to an application and cannot be deleted.",
+                    error_code="RESUME_IN_USE"
+                )
+            raise
 
         # Physical file cleanup
         if old_file_path:

@@ -18,6 +18,11 @@ const StaffSkillsPage = lazy(() => import('@/features/staff/pages/StaffSkillsPag
 const StaffCompaniesPage = lazy(() => import('@/features/staff/pages/StaffCompaniesPage'));
 const StaffStudentsPage = lazy(() => import('@/features/staff/pages/StaffStudentsPage'));
 const StaffJobsPage = lazy(() => import('@/features/staff/pages/StaffJobsPage'));
+const StudentApplicationsPage = lazy(() => import('@/features/student/pages/StudentApplicationsPage'));
+const StaffApplicationsPage = lazy(() => import('@/features/staff/pages/StaffApplicationsPage'));
+const StudentPlacementsPage = lazy(() => import('@/features/student/pages/StudentPlacementsPage'));
+const StudentReadinessPage = lazy(() => import('@/features/student/pages/StudentReadinessPage'));
+const StaffPlacementsPage = lazy(() => import('@/features/staff/pages/StaffPlacementsPage'));
 
 // Loading fallback
 const PageLoader = () => (
@@ -41,14 +46,9 @@ function AppRoutes() {
         <Route path="/student/resume" element={<ProtectedRoute allowedRoles={['student']}><StudentResume /></ProtectedRoute>} />
         <Route path="/student/jobs" element={<ProtectedRoute allowedRoles={['student']}><StudentJobsPage /></ProtectedRoute>} />
 
-        {/* Placeholder routes for remaining student pages */}
-        {['applications', 'readiness'].map((p) => (
-          <Route
-            key={p}
-            path={`/student/${p}`}
-            element={<ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>}
-          />
-        ))}
+        <Route path="/student/applications" element={<ProtectedRoute allowedRoles={['student']}><StudentApplicationsPage /></ProtectedRoute>} />
+        <Route path="/student/placements" element={<ProtectedRoute allowedRoles={['student']}><StudentPlacementsPage /></ProtectedRoute>} />
+        <Route path="/student/readiness" element={<ProtectedRoute allowedRoles={['student']}><StudentReadinessPage /></ProtectedRoute>} />
 
         {/* Staff module */}
         <Route path="/staff/dashboard" element={<ProtectedRoute allowedRoles={['staff']}><StaffDashboard /></ProtectedRoute>} />
@@ -58,8 +58,12 @@ function AppRoutes() {
         <Route path="/staff/companies" element={<ProtectedRoute allowedRoles={['staff']}><StaffCompaniesPage /></ProtectedRoute>} />
         <Route path="/staff/jobs" element={<ProtectedRoute allowedRoles={['staff']}><StaffJobsPage /></ProtectedRoute>} />
 
+        <Route path="/staff/applications" element={<ProtectedRoute allowedRoles={['staff']}><StaffApplicationsPage /></ProtectedRoute>} />
+        <Route path="/staff/placements" element={<ProtectedRoute allowedRoles={['staff']}><StaffPlacementsPage /></ProtectedRoute>} />
+
         {/* Placeholder routes for remaining staff pages */}
-        {['applications', 'placements'].map((p) => (
+        {/* Placeholder routes for remaining staff pages */}
+        {['analytics'].map((p) => (
           <Route
             key={p}
             path={`/staff/${p}`}

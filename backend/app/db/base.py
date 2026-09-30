@@ -13,6 +13,7 @@ from app.modules.jobs.models import Job, JobEligibleDepartment, JobRequiredSkill
 from app.modules.resumes.models import Resume  # noqa: F401
 from app.modules.skills.models import Skill, StudentSkill  # noqa: F401
 from app.modules.students.models import Department, Student  # noqa: F401
+from app.modules.applications.models import Application  # noqa: F401
 
-# Example of the pattern to follow as further modules are added:
-# from app.modules.placements.models import Placement  # noqa: F401
+from app.modules.placements.models import Placement  # noqa: F401
+from app.modules.application_rounds.models import ApplicationRound  # noqa: F401

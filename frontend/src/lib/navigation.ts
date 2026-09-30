@@ -50,6 +50,11 @@ export const studentNav: NavSection[] = [
         icon: ClipboardList,
       },
       {
+        label: 'My Placements',
+        to: '/student/placements',
+        icon: Award,
+      },
+      {
         label: 'Placement Readiness',
         to: '/student/readiness',
         icon: Gauge,

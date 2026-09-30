@@ -20,6 +20,7 @@ from app.db.session import get_db
 from app.modules.auth.models import User
 from app.modules.auth.service import AuthService
 from app.modules.companies.service import CompanyService
+from app.modules.intelligence.service import IntelligenceService
 from app.modules.jobs.service import JobService
 from app.modules.resumes.service import ResumeService
 from app.modules.skills.service import SkillService
@@ -142,6 +143,14 @@ def get_job_service(db: DBSession) -> JobService:
 JobServiceDep = Annotated[JobService, Depends(get_job_service)]
 
 
+# --- Intelligence service ---
+def get_intelligence_service(db: DBSession) -> IntelligenceService:
+    return IntelligenceService(db)
+
+
+IntelligenceServiceDep = Annotated[IntelligenceService, Depends(get_intelligence_service)]
+
+
 __all__ = [
     "DBSession",
     "AppSettings",
@@ -166,4 +175,6 @@ __all__ = [
     "get_staff_student_service",
     "JobServiceDep",
     "get_job_service",
+    "IntelligenceServiceDep",
+    "get_intelligence_service",
 ]

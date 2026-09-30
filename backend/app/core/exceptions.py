@@ -61,6 +61,12 @@ class ForbiddenError(AppException):
     message = "You do not have permission to perform this action."
 
 
+class BadRequestError(AppException):
+    status_code = 400
+    error_code = "BAD_REQUEST"
+    message = "Bad request."
+
+
 class DatabaseError(AppException):
     status_code = 503
     error_code = "DATABASE_ERROR"

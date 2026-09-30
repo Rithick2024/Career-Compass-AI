@@ -1,60 +1,72 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
 } from 'recharts';
 import {
   Calendar,
   CalendarClock,
-  MapPin,
-  Sparkles,
   ArrowRight,
-  Plus,
   TrendingUp,
-  Video,
   FileText,
   Award,
   AlertCircle,
+  Briefcase,
+  CheckCircle2,
+  Clock,
+  Video
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader, PageContainer } from '@/components/common/PageHeader';
-import { StatCard } from '@/components/common/StatCard';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import {
-  dashboardStats,
-  recentApplications,
-  skillGaps,
-  upcomingEvents,
-  applicationTrend,
-  jobRecommendations,
-} from '@/features/student/data/mock-data';
 import { studentService } from '@/features/student/services/student.service';
+import { analyticsService, StudentAnalyticsOverview } from '@/features/analytics/services/analytics.service';
+import { intelligenceService } from '@/features/student/services/intelligence.service';
+import { ReadinessResponse } from '@/features/student/types/intelligence.types';
+import { Gauge } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { MagnifyingGlassIcon } from '@radix-ui/react-icons';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
-const eventTypeConfig = {
-  interview: { icon: Video, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-100 dark:bg-violet-900/30' },
-  application: { icon: FileText, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/30' },
-  offer: { icon: Award, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/30' },
-  deadline: { icon: AlertCircle, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
-} as const;
+const STATUS_COLORS: Record<string, string> = {
+  Pending: '#eab308',
+  Reviewing: '#3b82f6',
+  Interview: '#8b5cf6',
+  Offered: '#10b981',
+  Rejected: '#ef4444',
+  Withdrawn: '#6b7280',
+};
+
+const ROUND_ICONS: Record<string, any> = {
+  'Technical Interview': Video,
+  'HR Interview': Video,
+  'Online Assessment': FileText,
+  'Coding Test': FileText,
+  'Aptitude Test': FileText,
+  'Managerial Interview': Video,
+  'Group Discussion': AlertCircle,
+  'Other': AlertCircle
+};
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
+  
   const [firstName, setFirstName] = useState('');
-  const readinessScore = 78;
+  const [data, setData] = useState<StudentAnalyticsOverview | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessResponse | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     studentService.getMyProfile()
@@ -63,7 +75,81 @@ export default function StudentDashboard() {
         setFirstName(name.split(' ')[0]);
       })
       .catch(console.error);
+
+    loadData();
   }, [user]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [res, rRes] = await Promise.all([
+        analyticsService.getStudentOverview(),
+        intelligenceService.getReadiness().catch(() => null),
+      ]);
+      setData(res);
+      setReadiness(rRes);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load dashboard data.',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderReadinessCard = () => {
+    if (loading || !readiness) return null;
+
+    return (
+      <Card className="mb-6 cursor-pointer hover:border-primary/50 transition-colors bg-card" onClick={() => navigate('/student/readiness')}>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <Gauge className="h-5 w-5 text-primary" />
+              Placement Readiness
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Rule-based preparation & platform eligibility score
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs font-semibold">
+              {readiness.status_category}
+            </Badge>
+            {readiness.is_placed && (
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200 text-xs">
+                Placed
+              </Badge>
+            )}
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold tracking-tight">{readiness.readiness_score}</span>
+            <span className="text-sm text-muted-foreground font-medium">/ 100</span>
+          </div>
+          {readiness.actionable_recommendations.length > 0 && (
+            <div className="space-y-1.5 pt-2 border-t">
+              <span className="text-xs font-semibold text-muted-foreground">Top Recommendations:</span>
+              <div className="grid gap-1">
+                {readiness.actionable_recommendations.slice(0, 2).map((rec, i) => (
+                  <p key={i} className="text-xs text-foreground flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                    <span className="truncate">{rec}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
 
   const greeting = (() => {
     const hour = new Date().getHours();
@@ -72,309 +158,267 @@ export default function StudentDashboard() {
     return 'Good evening';
   })();
 
+  const renderKPIs = () => {
+    if (loading) {
+      return (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+      );
+    }
+
+    if (!data) return null;
+
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Active Applications</CardTitle>
+            <Briefcase className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{data.active_applications}</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Offers</CardTitle>
+            <Award className="h-4 w-4 text-emerald-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{data.total_offers}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Upcoming Rounds</CardTitle>
+            <CalendarClock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{data.upcoming_rounds.length}</div>
+          </CardContent>
+        </Card>
+
+        <Card className={data.placement_summary.has_accepted_placement ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Accepted Placement</CardTitle>
+            <TrendingUp className={`h-4 w-4 ${data.placement_summary.has_accepted_placement ? "text-emerald-500" : "text-muted-foreground"}`} />
+          </CardHeader>
+          <CardContent>
+            {data.placement_summary.has_accepted_placement ? (
+              <>
+                <div className="text-xl font-bold truncate" title={data.placement_summary.latest_accepted_placement_company || ''}>
+                  {data.placement_summary.latest_accepted_placement_company}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  ${data.placement_summary.latest_accepted_placement_package?.toLocaleString()} Package
+                </div>
+              </>
+            ) : (
+              <div className="text-lg font-medium text-muted-foreground mt-1">
+                No placement yet
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderStatusChart = () => {
+    if (loading || !data) return null;
+
+    const hasApps = data.application_status_summary.some(s => s.count > 0);
+
+    return (
+      <Card className="lg:col-span-1">
+        <CardHeader>
+          <CardTitle>Application Pipeline</CardTitle>
+          <CardDescription>Current status of all applications</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[280px]">
+          {hasApps ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data.application_status_summary}
+                  dataKey="count"
+                  nameKey="status"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  label
+                >
+                  {data.application_status_summary.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.status] || '#cbd5e1'} />
+                  ))}
+                </Pie>
+                <RechartsTooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">No applications yet</div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderRecruitmentSummary = () => {
+    if (loading || !data) return null;
+    const { recruitment_summary } = data;
+
+    return (
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle>Recruitment Summary</CardTitle>
+          <CardDescription>Your performance across all recruitment rounds</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+            <div className="flex flex-col items-center justify-center p-4 bg-muted/30 rounded-lg">
+              <span className="text-3xl font-bold">{recruitment_summary.total_rounds}</span>
+              <span className="text-xs text-muted-foreground mt-1 uppercase tracking-wider font-semibold">Total Rounds</span>
+            </div>
+            <div className="flex flex-col items-center justify-center p-4 bg-muted/30 rounded-lg">
+              <span className="text-3xl font-bold">{recruitment_summary.completed_rounds}</span>
+              <span className="text-xs text-muted-foreground mt-1 uppercase tracking-wider font-semibold">Completed</span>
+            </div>
+            <div className="flex flex-col items-center justify-center p-4 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900 rounded-lg">
+              <span className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{recruitment_summary.passed_rounds}</span>
+              <span className="text-xs text-emerald-600/80 dark:text-emerald-400/80 mt-1 uppercase tracking-wider font-semibold">Passed</span>
+            </div>
+            <div className="flex flex-col items-center justify-center p-4 bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900 rounded-lg">
+              <span className="text-3xl font-bold text-red-600 dark:text-red-400">{recruitment_summary.failed_rounds}</span>
+              <span className="text-xs text-red-600/80 dark:text-red-400/80 mt-1 uppercase tracking-wider font-semibold">Failed</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderRecentApps = () => {
+    if (loading || !data) return null;
+
+    return (
+      <Card className="lg:col-span-2">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>Recent Applications</CardTitle>
+            <CardDescription>Latest tracked jobs</CardDescription>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/student/applications')}>
+            View All
+            <ArrowRight className="ml-1 h-3.5 w-3.5" />
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          {data.recent_applications.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              You haven't applied to any jobs yet.
+            </div>
+          ) : (
+            data.recent_applications.map((app, idx) => (
+              <div key={app.id}>
+                <div className="flex items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-secondary/60 cursor-pointer" onClick={() => navigate('/student/applications')}>
+                  <Avatar className="h-10 w-10 border">
+                    <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
+                      {app.company_name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{app.job_title}</p>
+                    <p className="text-xs text-muted-foreground truncate">{app.company_name}</p>
+                  </div>
+                  <div className="hidden sm:block">
+                    <StatusBadge status={app.status as any} />
+                  </div>
+                  <span className="hidden text-xs text-muted-foreground md:block">
+                    {new Date(app.applied_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+                {idx < data.recent_applications.length - 1 && <Separator className="my-0.5" />}
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderUpcomingRounds = () => {
+    if (loading || !data) return null;
+
+    return (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>Upcoming Rounds</CardTitle>
+            <CardDescription>Scheduled interviews and tests</CardDescription>
+          </div>
+          <CalendarClock className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {data.upcoming_rounds.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No upcoming rounds scheduled.
+            </div>
+          ) : (
+            data.upcoming_rounds.map((event) => {
+              const IconComp = ROUND_ICONS[event.round_type] || CalendarClock;
+              return (
+                <div key={event.id} className="flex gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                    <IconComp className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 space-y-0.5 min-w-0">
+                    <p className="text-sm font-medium leading-tight truncate" title={`${event.round_type} - ${event.company_name}`}>
+                      {event.round_type}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{event.job_title} at {event.company_name}</p>
+                    <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                      <Calendar className="h-3 w-3" />
+                      {new Date(event.scheduled_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
-    <AppLayout role="student" userName="Aarav Sharma" userRole="Student" avatarText="AS">
+    <AppLayout role="student" userName={user?.email || firstName || 'Student'} userRole="Student" avatarText={firstName.substring(0,2).toUpperCase() || 'ST'}>
       <PageContainer>
         <PageHeader
           title={`${greeting}, ${firstName || 'Student'}`}
-          description="Here's what's happening with your placement journey today."
+          description="Here's what's happening with your placement journey."
           action={
             <Button onClick={() => navigate('/student/jobs')}>
-              <Plus className="mr-1.5 h-4 w-4" />
+              <MagnifyingGlassIcon className="mr-1.5 h-4 w-4" />
               Find Jobs
             </Button>
           }
         />
 
-        {/* Stats grid */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {dashboardStats.map((stat) => (
-            <StatCard key={stat.label} {...stat} />
-          ))}
+        {renderReadinessCard()}
+        {renderKPIs()}
+
+        <div className="grid gap-6 lg:grid-cols-3 mb-6">
+          {renderStatusChart()}
+          {renderRecruitmentSummary()}
         </div>
 
-        {/* Charts row */}
-        <div className="grid gap-4 lg:grid-cols-3">
-          {/* Application trend chart */}
-          <Card className="lg:col-span-2">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div className="space-y-1">
-                <CardTitle>Application Activity</CardTitle>
-                <CardDescription>Applications vs interviews over the last 8 months</CardDescription>
-              </div>
-              <div className="flex items-center gap-4 text-xs">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                  Applications
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-chart-2" />
-                  Interviews
-                </span>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={applicationTrend} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gradApplications" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="gradInterviews" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis
-                    dataKey="month"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <RechartsTooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="applications"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    fill="url(#gradApplications)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="interviews"
-                    stroke="hsl(var(--chart-2))"
-                    strokeWidth={2}
-                    fill="url(#gradInterviews)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Readiness score gauge */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Placement Readiness</CardTitle>
-              <CardDescription>Your overall readiness score</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center justify-center pt-2">
-              <div className="relative flex h-40 w-40 items-center justify-center">
-                <svg className="h-full w-full -rotate-90" viewBox="0 0 120 120">
-                  <circle
-                    cx="60"
-                    cy="60"
-                    r="52"
-                    fill="none"
-                    stroke="hsl(var(--muted))"
-                    strokeWidth="10"
-                  />
-                  <circle
-                    cx="60"
-                    cy="60"
-                    r="52"
-                    fill="none"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeDasharray={`${(readinessScore / 100) * 327} 327`}
-                    className="transition-all duration-1000"
-                  />
-                </svg>
-                <div className="absolute flex flex-col items-center">
-                  <span className="text-4xl font-bold">{readinessScore}%</span>
-                  <span className="text-xs text-muted-foreground">Ready</span>
-                </div>
-              </div>
-              <div className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                <TrendingUp className="h-3.5 w-3.5" />
-                <span>+5% from last month</span>
-              </div>
-              <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => navigate('/student/readiness')}>
-                View Details
-                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Recent applications + Upcoming events */}
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Recent Applications</CardTitle>
-                <CardDescription>Track the status of your latest applications</CardDescription>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/student/applications')}>
-                View All
-                <ArrowRight className="ml-1 h-3.5 w-3.5" />
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              {recentApplications.map((app, idx) => (
-                <div key={app.id}>
-                  <div className="flex items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-secondary/60">
-                    <Avatar className="h-10 w-10 border">
-                      <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
-                        {app.logo}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{app.role}</p>
-                      <p className="text-xs text-muted-foreground">{app.company}</p>
-                    </div>
-                    <div className="hidden sm:block">
-                      <StatusBadge status={app.status} />
-                    </div>
-                    <span className="hidden text-xs text-muted-foreground md:block">
-                      {new Date(app.appliedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
-                  </div>
-                  {idx < recentApplications.length - 1 && <Separator className="my-0.5" />}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Upcoming events */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Upcoming</CardTitle>
-                <CardDescription>Next 2 weeks</CardDescription>
-              </div>
-              <CalendarClock className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {upcomingEvents.map((event) => {
-                const config = eventTypeConfig[event.type];
-                return (
-                  <div key={event.title} className="flex gap-3">
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${config.bg}`}>
-                      <config.icon className={`h-4 w-4 ${config.color}`} />
-                    </div>
-                    <div className="flex-1 space-y-0.5">
-                      <p className="text-sm font-medium leading-tight">{event.title}</p>
-                      <p className="text-xs text-muted-foreground">{event.description}</p>
-                      <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(event.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Skill gaps + Job recommendations */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Skill Gap Analysis</CardTitle>
-                <CardDescription>AI-identified areas to improve</CardDescription>
-              </div>
-              <Badge variant="secondary" className="gap-1">
-                <Sparkles className="h-3 w-3" />
-                AI
-              </Badge>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {skillGaps.map((skill) => (
-                <div key={skill.skill} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{skill.skill}</span>
-                    <span className="text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">{skill.have}%</span> / {skill.need}%
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <Progress value={skill.have} className="h-2" />
-                    <div
-                      className="absolute top-0 h-2 w-0.5 bg-foreground/40"
-                      style={{ left: `${skill.need}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-              <Button variant="outline" size="sm" className="w-full" onClick={() => navigate('/student/skills')}>
-                Improve Skills
-                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Recommended Jobs</CardTitle>
-                <CardDescription>AI-matched based on your profile</CardDescription>
-              </div>
-              <Badge variant="secondary" className="gap-1">
-                <Sparkles className="h-3 w-3" />
-                AI
-              </Badge>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {jobRecommendations.map((job) => (
-                <div
-                  key={job.id}
-                  role="button"
-                  tabIndex={0}
-                  className="rounded-lg border p-3.5 transition-all hover:border-primary/30 hover:shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  onClick={() => navigate('/student/jobs')}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      navigate('/student/jobs');
-                    }
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-0.5">
-                      <p className="text-sm font-semibold">{job.role}</p>
-                      <p className="text-xs text-muted-foreground">{job.company}</p>
-                    </div>
-                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0">
-                      {job.match}% match
-                    </Badge>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {job.tags.slice(0, 3).map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-[10px] font-medium">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {job.location}
-                    </span>
-                    <span className="font-medium text-foreground">{job.salary}</span>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+        <div className="grid gap-6 lg:grid-cols-3 pb-10">
+          {renderRecentApps()}
+          {renderUpcomingRounds()}
         </div>
       </PageContainer>
     </AppLayout>

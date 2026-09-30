@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   XCircle,
   Banknote,
+  Send,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AxiosError } from 'axios';
@@ -37,6 +38,12 @@ import {
 
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { studentJobService, StudentJob } from '../services/job.service';
+import { studentApplicationService } from '../services/application.service';
+import { resumeService } from '../services/resume.service';
+import { intelligenceService } from '../services/intelligence.service';
+import { JobMatchResponse } from '../types/intelligence.types';
+import { ResumeResponse } from '../types/api';
+import { Progress } from '@/components/ui/progress';
 
 export default function StudentJobsPage() {
   const { user } = useAuth();
@@ -51,6 +58,42 @@ export default function StudentJobsPage() {
 
   // Dialog state
   const [selectedJob, setSelectedJob] = useState<StudentJob | null>(null);
+  const [jobMatch, setJobMatch] = useState<JobMatchResponse | null>(null);
+
+  useEffect(() => {
+    if (selectedJob) {
+      intelligenceService.getJobMatch(selectedJob.id)
+        .then(setJobMatch)
+        .catch(() => setJobMatch(null));
+    } else {
+      setJobMatch(null);
+    }
+  }, [selectedJob]);
+
+  // Application state
+  const [resumes, setResumes] = useState<ResumeResponse[]>([]);
+  const [selectedResumeId, setSelectedResumeId] = useState<string>('');
+  const [isApplying, setIsApplying] = useState(false);
+  const [showApplyForm, setShowApplyForm] = useState(false);
+
+  const fetchResumes = useCallback(async () => {
+    try {
+      const data = await resumeService.getResumes();
+      setResumes(data);
+      const defaultResume = data.find((r) => r.is_default);
+      if (defaultResume) {
+        setSelectedResumeId(defaultResume.id.toString());
+      } else if (data.length > 0) {
+        setSelectedResumeId(data[0].id.toString());
+      }
+    } catch (err) {
+      console.error('Failed to fetch resumes', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchResumes();
+  }, [fetchResumes]);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -361,8 +404,90 @@ export default function StudentJobsPage() {
                     </div>
                   )}
 
+                  {/* Skill Match Intelligence Section */}
+                  {jobMatch && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold flex items-center gap-2">
+                          <GraduationCap className="h-4 w-4 text-primary" />
+                          Skill Match Analysis
+                        </h3>
+                        <Badge variant="outline" className="font-semibold text-xs bg-primary/5 text-primary border-primary/20">
+                          {jobMatch.skill_match_percentage}% Match
+                        </Badge>
+                      </div>
+                      
+                      <div className="p-4 rounded-lg border bg-card space-y-3">
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs font-semibold text-muted-foreground">
+                            <span>Match Ratio</span>
+                            <span>{jobMatch.skill_match_percentage}%</span>
+                          </div>
+                          <Progress value={jobMatch.skill_match_percentage} className="h-2" />
+                          <p className="text-xs text-muted-foreground mt-1">{jobMatch.skill_match_explanation}</p>
+                        </div>
+
+                        {jobMatch.total_required_skills > 0 && (
+                          <div className="space-y-2 pt-2 border-t">
+                            {jobMatch.strong_matches.length > 0 && (
+                              <div>
+                                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Strong Matches:</span>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {jobMatch.strong_matches.map(s => (
+                                    <Badge key={s.skill_id} variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 text-xs">
+                                      ✓ {s.skill_name} ({s.student_proficiency})
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {jobMatch.matched_skills.length > 0 && (
+                              <div>
+                                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">Exact Matches:</span>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {jobMatch.matched_skills.map(s => (
+                                    <Badge key={s.skill_id} variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 text-xs">
+                                      ✓ {s.skill_name} ({s.student_proficiency})
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {jobMatch.insufficient_proficiency.length > 0 && (
+                              <div>
+                                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Needs Higher Proficiency:</span>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {jobMatch.insufficient_proficiency.map(s => (
+                                    <Badge key={s.skill_id} variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 text-xs">
+                                      ! {s.skill_name} (Have {s.student_proficiency}, Need {s.min_proficiency})
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {jobMatch.missing_skills.length > 0 && (
+                              <div>
+                                <span className="text-xs font-semibold text-red-600 dark:text-red-400">Missing Skills:</span>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {jobMatch.missing_skills.map(s => (
+                                    <Badge key={s.skill_id} variant="outline" className="bg-red-500/10 text-red-700 dark:text-red-400 border-red-200 text-xs">
+                                      ✕ {s.skill_name} (Need {s.min_proficiency})
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Skills */}
-                  {selectedJob.required_skills.length > 0 && (
+                  {selectedJob.required_skills.length > 0 && !jobMatch && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-semibold flex items-center gap-2">
                         <GraduationCap className="h-4 w-4" />
@@ -384,10 +509,71 @@ export default function StudentJobsPage() {
                   )}
                 </div>
 
-                <div className="flex justify-end pt-4 border-t mt-4">
-                  <Button disabled variant="secondary" className="w-full sm:w-auto">
-                    Applications coming soon
-                  </Button>
+                <div className="flex justify-end pt-4 border-t mt-4 gap-2">
+                  {!showApplyForm ? (
+                    <Button 
+                      className="w-full sm:w-auto" 
+                      disabled={!selectedJob.is_fully_eligible}
+                      onClick={() => setShowApplyForm(true)}
+                    >
+                      <Send className="h-4 w-4 mr-2" />
+                      Apply for Job
+                    </Button>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row items-end gap-2 w-full sm:w-auto">
+                      <div className="w-full sm:w-64">
+                        <Select value={selectedResumeId} onValueChange={setSelectedResumeId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select Resume" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {resumes.map((r: ResumeResponse) => (
+                              <SelectItem key={r.id} value={r.id.toString()}>
+                                {r.title} {r.is_default && '(Default)'}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => setShowApplyForm(false)}
+                          disabled={isApplying}
+                        >
+                          Cancel
+                        </Button>
+                        <Button 
+                          onClick={async () => {
+                            if (!selectedResumeId) {
+                              toast.error('Please select a resume');
+                              return;
+                            }
+                            setIsApplying(true);
+                            try {
+                              await studentApplicationService.submitApplication({
+                                job_id: selectedJob.id,
+                                resume_id: parseInt(selectedResumeId, 10),
+                              });
+                              toast.success('Successfully applied for the job!');
+                              setSelectedJob(null);
+                              setShowApplyForm(false);
+                            } catch (err: unknown) {
+                              const msg = err instanceof AxiosError 
+                                ? err.response?.data?.detail || err.response?.data?.message 
+                                : 'Failed to apply';
+                              toast.error(msg || 'Failed to apply');
+                            } finally {
+                              setIsApplying(false);
+                            }
+                          }}
+                          disabled={isApplying || !selectedResumeId}
+                        >
+                          {isApplying ? 'Submitting...' : 'Confirm Apply'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
