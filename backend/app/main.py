@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
-from app.core.config import settings
+from app.core.config import configure_email_validator, settings
 from app.core.error_handlers import register_exception_handlers
 from app.core.logging_config import setup_logging
 from app.db.database import engine
@@ -25,6 +25,7 @@ logger = logging.getLogger("app")
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup/shutdown hooks. No table creation here — Alembic owns schema."""
+    configure_email_validator(settings)
     logger.info("Starting %s (%s)", settings.APP_NAME, settings.APP_ENV)
     yield
     logger.info("Shutting down %s — disposing DB engine", settings.APP_NAME)
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    configure_email_validator(settings)
     app = FastAPI(
         title=settings.APP_NAME,
         description="Smart Placement Analytics Platform — Backend API",

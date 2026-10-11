@@ -21,10 +21,13 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.config import settings
+from app.core.config import configure_email_validator, settings
 from app.db.base import Base
 from app.main import app
 from app.modules.auth.repository import UserRepository
+
+# Ensure email-validator is configured for testing environment
+configure_email_validator(settings)
 
 # NOTE on event loop scope: `engine` below is session-scoped (one asyncpg
 # pool for the whole run), so every async fixture/test that touches it

@@ -8,7 +8,12 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.core.config import configure_email_validator, settings
 from app.shared.enums import RoleEnum
+
+# Ensure email-validator reflects environment configuration even if schemas
+# are imported without instantiating the full FastAPI app.
+configure_email_validator(settings)
 
 # bcrypt silently ignores/truncates bytes beyond 72 — cap input so
 # every accepted password is actually fully honored by the hash.

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     """Strongly-typed application settings, populated from `.env`."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "backend/.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
+    # --- Email validation ---
+    # In development/test environments, RFC 2606 reserved domains (.test)
+    # can be allowed for synthetic demo accounts while preserving full syntax rules.
+    # In production (APP_ENV=production), test domains are strictly disallowed.
+    ALLOW_TEST_EMAIL_DOMAINS: bool = True
+
     # --- Resume file storage ---
     # Relative to the project root; resolved by app.modules.resumes.storage.
     # Local filesystem for this MVP — see docs/resume-module.md for the
@@ -83,6 +89,32 @@ class Settings(BaseSettings):
         return self.APP_ENV.lower() == "production"
 
 
+def configure_email_validator(app_settings: Settings | None = None) -> None:
+    """
+    Configures the `email-validator` library according to environment settings.
+
+    RFC 2606 reserves `.test` (along with `.example`, `.invalid`, `.localhost`)
+    for testing, documentation, and synthetic development environments.
+    By default, `email-validator` rejects reserved TLDs. Setting
+    `email_validator.TEST_ENVIRONMENT = True` allows these synthetic domains
+    in development and test environments while strictly maintaining all
+    email syntax checks, mailbox validation, and structure validation.
+
+    In production (`app_settings.is_production` is True), `TEST_ENVIRONMENT`
+    is strictly forced to `False`, rejecting all special-use/reserved domains.
+    """
+    try:
+        import email_validator
+    except ImportError:
+        return
+
+    cfg = app_settings or get_settings()
+    if cfg.is_production:
+        email_validator.TEST_ENVIRONMENT = False
+    else:
+        email_validator.TEST_ENVIRONMENT = bool(cfg.ALLOW_TEST_EMAIL_DOMAINS)
+
+
 @lru_cache
 def get_settings() -> Settings:
     """
@@ -96,3 +128,4 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+configure_email_validator(settings)
