@@ -134,3 +134,7 @@ class AnalyticsService:
             recruitment_summary=recruitment_summary,
             placement_summary=placement_summary
         )
+
+    async def get_department_skill_gaps(self) -> dict:
+        return await self._repo.get_department_skill_gaps()
+

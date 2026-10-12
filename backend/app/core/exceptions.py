@@ -71,3 +71,27 @@ class DatabaseError(AppException):
     status_code = 503
     error_code = "DATABASE_ERROR"
     message = "A database error occurred."
+
+
+class AIProviderConfigError(AppException):
+    status_code = 503
+    error_code = "AI_PROVIDER_UNCONFIGURED"
+    message = "AI service is currently unconfigured. Please configure GEMINI_API_KEY."
+
+
+class AIProviderQuotaError(AppException):
+    status_code = 429
+    error_code = "AI_QUOTA_EXCEEDED"
+    message = "AI service quota or rate limit exceeded. Please wait a moment and try again."
+
+
+class AIProviderTimeoutError(AppException):
+    status_code = 504
+    error_code = "AI_REQUEST_TIMEOUT"
+    message = "AI request timed out. Please try again."
+
+
+class AIProviderServiceError(AppException):
+    status_code = 502
+    error_code = "AI_SERVICE_UNAVAILABLE"
+    message = "The AI service encountered an error or returned an invalid response."

@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     RESUME_UPLOAD_DIR: str = "uploads/resumes"
     RESUME_MAX_FILE_SIZE_MB: int = 5
 
+    # --- Gemini AI Configuration ---
+    GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-3.8-flash"
+    GEMINI_TIMEOUT_SECONDS: float = 30.0
+    GEMINI_MAX_INPUT_CHARS: int = 1500
+    GEMINI_MAX_OUTPUT_TOKENS: int = 1000
+
     @computed_field  # type: ignore[misc]
     @property
     def DATABASE_URL(self) -> str:

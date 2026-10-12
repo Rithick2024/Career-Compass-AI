@@ -2,13 +2,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, or_, and_, desc
 from datetime import datetime, timezone
 
-from app.modules.students.models import Student
-from app.modules.jobs.models import Job
+from app.modules.students.models import Student, Department
+from app.modules.jobs.models import Job, JobRequiredSkill, JobEligibleDepartment
+from app.modules.skills.models import Skill, StudentSkill
 from app.modules.companies.models import Company
 from app.modules.applications.models import Application, ApplicationStatus
 from app.modules.placements.models import Placement
 from app.modules.application_rounds.models import ApplicationRound, RoundStatus, RoundResult, RoundType
-from app.modules.students.models import Department
 
 
 class AnalyticsRepository:
@@ -236,3 +236,92 @@ class AnalyticsRepository:
             "latest_accepted_placement_package": float(latest_row[1]) if latest_row and latest_row[1] else None,
             "latest_accepted_placement_date": latest_row[2] if latest_row else None,
         }
+
+    async def get_department_skill_gaps(self) -> dict:
+        """
+        Aggregate in-demand skills and top missing skills per department across active jobs.
+        """
+        now = datetime.now(timezone.utc)
+        jobs_stmt = (
+            select(Job)
+            .join(Company, Company.id == Job.company_id)
+            .where(
+                Job.is_active == True,
+                Company.is_active == True,
+                or_(Job.deadline == None, Job.deadline >= now),
+            )
+        )
+        jobs_res = await self._session.execute(jobs_stmt)
+        active_jobs = list(jobs_res.scalars().all())
+
+        depts_stmt = select(Department).order_by(Department.name)
+        depts_res = await self._session.execute(depts_stmt)
+        departments = list(depts_res.scalars().all())
+
+        results = []
+        for dept in departments:
+            # Count students in department
+            st_stmt = select(Student.id).where(Student.department_id == dept.id)
+            st_res = await self._session.execute(st_stmt)
+            dept_student_ids = list(st_res.scalars().all())
+            dept_student_count = len(dept_student_ids)
+
+            # Determine jobs open to this department
+            eligible_jobs = [
+                j for j in active_jobs
+                if not j.eligible_departments or any(ed.department_id == dept.id for ed in j.eligible_departments)
+            ]
+
+            # Count demand for skills among eligible jobs
+            skill_demand_counts: dict[str, int] = {}
+            for j in eligible_jobs:
+                for req in j.required_skills:
+                    if req.skill:
+                        skill_demand_counts[req.skill.name] = skill_demand_counts.get(req.skill.name, 0) + 1
+
+            # Top in-demand skills (ordered by job frequency)
+            sorted_demand = sorted(skill_demand_counts.items(), key=lambda x: x[1], reverse=True)
+            in_demand_skill_names = [k for k, _ in sorted_demand[:6]]
+
+            # Determine missing skills among students in this department
+            top_missing_skills = []
+            if dept_student_ids and in_demand_skill_names:
+                # Count how many students in dept possess each in-demand skill
+                st_skills_stmt = (
+                    select(Skill.name, func.count(StudentSkill.student_id.distinct()))
+                    .join(StudentSkill, StudentSkill.skill_id == Skill.id)
+                    .where(
+                        StudentSkill.student_id.in_(dept_student_ids),
+                        Skill.name.in_(in_demand_skill_names),
+                    )
+                    .group_by(Skill.name)
+                )
+                st_skills_res = await self._session.execute(st_skills_stmt)
+                dept_skill_holders = {name: count for name, count in st_skills_res.all()}
+
+                # Missing rate: students without the skill
+                missing_rates = []
+                for s_name in in_demand_skill_names:
+                    holders = dept_skill_holders.get(s_name, 0)
+                    missing_count = dept_student_count - holders
+                    if missing_count > 0:
+                        missing_rates.append((s_name, missing_count))
+
+                missing_rates.sort(key=lambda x: x[1], reverse=True)
+                top_missing_skills = [s for s, _ in missing_rates[:4]]
+            elif not dept_student_ids:
+                top_missing_skills = in_demand_skill_names[:3]
+
+            results.append({
+                "department_id": dept.id,
+                "department_name": dept.name,
+                "student_count": dept_student_count,
+                "in_demand_skills": in_demand_skill_names[:5],
+                "top_missing_skills": top_missing_skills,
+            })
+
+        return {
+            "departments": results,
+            "total_active_jobs_analyzed": len(active_jobs),
+        }
+

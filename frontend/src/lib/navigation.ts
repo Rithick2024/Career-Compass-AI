@@ -11,6 +11,7 @@ import {
   GraduationCap,
   Award,
   CheckSquare,
+  Bot,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -41,8 +42,19 @@ export const studentNav: NavSection[] = [
     ],
   },
   {
-    title: 'Opportunities',
+    title: 'Career Intelligence',
     items: [
+      {
+        label: 'AI Career Mentor',
+        to: '/student/mentor',
+        icon: Bot,
+        badge: 'New',
+      },
+      {
+        label: 'Placement Readiness',
+        to: '/student/readiness',
+        icon: Gauge,
+      },
       { label: 'Available Jobs', to: '/student/jobs', icon: Briefcase },
       {
         label: 'My Applications',
@@ -53,11 +65,6 @@ export const studentNav: NavSection[] = [
         label: 'My Placements',
         to: '/student/placements',
         icon: Award,
-      },
-      {
-        label: 'Placement Readiness',
-        to: '/student/readiness',
-        icon: Gauge,
       },
     ],
   },

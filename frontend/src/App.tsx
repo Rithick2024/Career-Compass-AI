@@ -22,6 +22,7 @@ const StudentApplicationsPage = lazy(() => import('@/features/student/pages/Stud
 const StaffApplicationsPage = lazy(() => import('@/features/staff/pages/StaffApplicationsPage'));
 const StudentPlacementsPage = lazy(() => import('@/features/student/pages/StudentPlacementsPage'));
 const StudentReadinessPage = lazy(() => import('@/features/student/pages/StudentReadinessPage'));
+const StudentMentorPage = lazy(() => import('@/features/student/pages/StudentMentorPage'));
 const StaffPlacementsPage = lazy(() => import('@/features/staff/pages/StaffPlacementsPage'));
 
 // Loading fallback
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="/student/applications" element={<ProtectedRoute allowedRoles={['student']}><StudentApplicationsPage /></ProtectedRoute>} />
         <Route path="/student/placements" element={<ProtectedRoute allowedRoles={['student']}><StudentPlacementsPage /></ProtectedRoute>} />
         <Route path="/student/readiness" element={<ProtectedRoute allowedRoles={['student']}><StudentReadinessPage /></ProtectedRoute>} />
+        <Route path="/student/mentor" element={<ProtectedRoute allowedRoles={['student']}><StudentMentorPage /></ProtectedRoute>} />
 
         {/* Staff module */}
         <Route path="/staff/dashboard" element={<ProtectedRoute allowedRoles={['staff']}><StaffDashboard /></ProtectedRoute>} />

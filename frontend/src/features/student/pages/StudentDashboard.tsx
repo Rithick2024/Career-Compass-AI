@@ -18,7 +18,9 @@ import {
   Briefcase,
   CheckCircle2,
   Clock,
-  Video
+  Video,
+  Bot,
+  Sparkles,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader, PageContainer } from '@/components/common/PageHeader';
@@ -401,10 +403,16 @@ export default function StudentDashboard() {
           title={`${greeting}, ${firstName || 'Student'}`}
           description="Here's what's happening with your placement journey."
           action={
-            <Button onClick={() => navigate('/student/jobs')}>
-              <MagnifyingGlassIcon className="mr-1.5 h-4 w-4" />
-              Find Jobs
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" className="gap-1.5" onClick={() => navigate('/student/mentor')}>
+                <Bot className="h-4 w-4 text-primary" />
+                AI Career Mentor
+              </Button>
+              <Button onClick={() => navigate('/student/jobs')}>
+                <MagnifyingGlassIcon className="mr-1.5 h-4 w-4" />
+                Find Jobs
+              </Button>
+            </div>
           }
         />
 

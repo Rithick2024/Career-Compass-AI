@@ -1,4 +1,5 @@
 import api from '@/api/axios';
+import { DepartmentSkillGapsOverview } from '@/features/student/types/intelligence.types';
 
 export interface ApplicationStatusCount {
   status: string;
@@ -88,5 +89,11 @@ export const analyticsService = {
   async getStudentOverview(): Promise<StudentAnalyticsOverview> {
     const res = await api.get<StudentAnalyticsOverview>('/student/analytics/overview');
     return res.data;
-  }
+  },
+
+  async getDepartmentSkillGaps(): Promise<DepartmentSkillGapsOverview> {
+    const res = await api.get<DepartmentSkillGapsOverview>('/staff/analytics/department-skill-gaps');
+    return res.data;
+  },
 };
+

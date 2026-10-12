@@ -5,9 +5,12 @@ Service layer for Placement Readiness and Skill Gap Intelligence.
 from typing import List, Optional, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ForbiddenError
 from app.shared.enums import ProficiencyLevel
+from app.modules.intelligence.gemini_provider import GeminiProvider
+from app.modules.intelligence.models import ImprovementPlan, ImprovementPlanAction
 from app.modules.intelligence.repository import IntelligenceRepository
+from app.modules.jobs.models import Job
 from app.modules.intelligence.schemas import (
     ReadinessResponse,
     ReadinessComponent,
@@ -15,6 +18,16 @@ from app.modules.intelligence.schemas import (
     SkillGapItem,
     JobMatchResponse,
     JobMatchSkillItem,
+    MentorChatRequest,
+    MentorChatResponse,
+    MentorContextSummary,
+    JobReadinessAssessmentResponse,
+    SkillEvidenceItem,
+    HistoricalRoundSignal,
+    ImprovementPlanResponse,
+    ImprovementPlanActionResponse,
+    JobMentorAdviceRequest,
+    JobMentorAdviceResponse,
 )
 
 
@@ -40,8 +53,13 @@ def prof_to_str(prof: Optional[ProficiencyLevel | str]) -> str:
 
 
 class IntelligenceService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        gemini_provider: Optional[GeminiProvider] = None,
+    ) -> None:
         self.repository = IntelligenceRepository(db)
+        self.gemini_provider = gemini_provider or GeminiProvider()
 
     async def calculate_readiness(self, user_id: int) -> ReadinessResponse:
         """Calculate overall 100-point transparent placement readiness score."""
@@ -445,3 +463,663 @@ class IntelligenceService:
             missing_skills=missing_skills,
             skill_match_explanation=skill_expl,
         )
+
+    async def ask_career_mentor(
+        self, user_id: int, request: MentorChatRequest
+    ) -> MentorChatResponse:
+        """
+        Grounded AI Career Mentor answering placement, skill, and interview preparation questions.
+
+        Strict Privacy & Security:
+        - Retrieves only sanitized educational standing & skills for the authenticated student.
+        - Zero personal identifiers (no names, emails, phones, or addresses) sent to provider.
+        - Grounded in active campus hiring requirements when available.
+        - Read-only execution: no database mutations.
+        """
+        student = await self.repository.get_student_by_user_id(user_id)
+        student_skills = await self.repository.get_student_skills(student.id)
+        active_student_skills = [
+            ss for ss in student_skills if ss.skill and ss.skill.is_active
+        ]
+        active_jobs = await self.repository.get_active_visible_jobs()
+
+        dept_name = student.department.name if student.department else None
+        grad_year = student.graduation_year
+        has_cgpa = student.cgpa is not None
+        cgpa_str = f"{float(student.cgpa):.2f}/10.0" if has_cgpa else "Not provided"
+
+        top_skill_names = [ss.skill.name for ss in active_student_skills][:8]
+        skills_summary = ", ".join(
+            f"{ss.skill.name} ({prof_to_str(ss.proficiency).capitalize()})"
+            for ss in active_student_skills[:12]
+        ) or "None recorded yet"
+
+        active_roles = list(dict.fromkeys(job.title for job in active_jobs))[:5]
+        active_roles_str = (
+            ", ".join(active_roles) if active_roles else "General technical & engineering roles"
+        )
+
+        context_summary = MentorContextSummary(
+            department=dept_name,
+            graduation_year=grad_year,
+            cgpa_available=has_cgpa,
+            skills_count=len(active_student_skills),
+            top_skills=top_skill_names,
+            active_campus_jobs_count=len(active_jobs),
+        )
+
+        system_instruction = (
+            "You are Career Compass AI Mentor, an expert campus placement coach and technical career mentor. "
+            "Your goal is to help undergraduate and postgraduate students prepare for campus placements, technical interviews, and software careers.\n\n"
+            "STUDENT PROFILE CONTEXT (Grounded data from verified platform profile):\n"
+            f"- Academic Department: {dept_name or 'Not specified'}\n"
+            f"- Target Graduation Year: {grad_year or 'Not specified'}\n"
+            f"- Academic CGPA Standing: {cgpa_str}\n"
+            f"- Student's Registered Skills & Proficiencies: {skills_summary}\n"
+            f"- Current Active Campus Placement Roles: {active_roles_str}\n\n"
+            "STRICT INSTRUCTIONS:\n"
+            "1. Ground your advice in the student's actual department and registered skills when answering role-specific questions.\n"
+            "2. Clearly distinguish between what the student currently possesses in their profile versus your recommendations or suggested next steps.\n"
+            "3. If recommending skill development, suggest concrete, realistic projects with modern tech stacks and technical interview topics.\n"
+            "4. For interview preparation questions, structure advice into practical phases: Core Data Structures/Algorithms, System/Architecture Concepts, and Behavioral/HR communication.\n"
+            "5. If student profile context is sparse (e.g. no skills registered), answer general placement questions cleanly without pretending to know their profile.\n"
+            "6. Keep responses well-formatted with markdown headings, concise bullet points, and actionable next steps.\n"
+            "7. Never claim or guarantee placement offers or invent fictitious institution policies."
+        )
+
+        history_payload = [
+            {"role": msg.role, "content": msg.content} for msg in request.history
+        ]
+
+        ai_response_text = await self.gemini_provider.generate_response(
+            system_instruction=system_instruction,
+            user_prompt=request.message,
+            history=history_payload,
+        )
+
+        return MentorChatResponse(
+            response=ai_response_text,
+            grounded_context=context_summary,
+            model_used=self.gemini_provider.model,
+        )
+
+    def _plan_to_response(self, plan: ImprovementPlan, job: Job) -> ImprovementPlanResponse:
+        total = len(plan.actions)
+        completed = sum(1 for a in plan.actions if a.status == "COMPLETED")
+        progress = round((completed / total) * 100.0, 1) if total > 0 else 0.0
+
+        action_responses = [
+            ImprovementPlanActionResponse(
+                id=a.id,
+                plan_id=a.plan_id,
+                skill_id=a.skill_id,
+                skill_name=a.skill_name,
+                current_proficiency=a.current_proficiency,
+                target_proficiency=a.target_proficiency,
+                priority=a.priority,
+                status=a.status,
+                reason=a.reason,
+                suggested_activity=a.suggested_activity,
+                completion_criteria=a.completion_criteria,
+                evidence_source=a.evidence_source,
+                evidence_reference=a.evidence_reference,
+                completed_at=a.completed_at,
+                created_at=a.created_at,
+                updated_at=a.updated_at,
+            )
+            for a in plan.actions
+        ]
+
+        return ImprovementPlanResponse(
+            id=plan.id,
+            student_id=plan.student_id,
+            job_id=plan.job_id,
+            job_title=job.title,
+            company_name=job.company.name if job.company else "",
+            total_actions=total,
+            completed_actions=completed,
+            progress_percentage=progress,
+            actions=action_responses,
+            created_at=plan.created_at,
+            updated_at=plan.updated_at,
+        )
+
+    async def assess_job_readiness(
+        self, user_id: int, job_id: int
+    ) -> JobReadinessAssessmentResponse:
+        """
+        Explainable, deterministic job readiness assessment.
+        Evaluates actual academic criteria, required skills vs student evidence,
+        document preparation, and past interview/assessment signals.
+        """
+        student = await self.repository.get_student_by_user_id(user_id)
+        if not student:
+            raise NotFoundError("Student profile not found.")
+
+        job = await self.repository.get_active_visible_job_by_id(job_id)
+        if not job:
+            raise NotFoundError(f"Job with ID {job_id} not found or is not currently active.")
+
+        student_skills = await self.repository.get_student_skills(student.id)
+        student_skill_map = {
+            ss.skill_id: ss for ss in student_skills if ss.skill and ss.skill.is_active
+        }
+
+        resumes = await self.repository.get_student_resumes(student.id)
+        has_default_resume = any(r.is_default for r in resumes)
+
+        # 1. Academic Eligibility Check (30 pts max)
+        cgpa_ok = job.min_cgpa is None or (student.cgpa is not None and student.cgpa >= job.min_cgpa)
+        eligible_dept_ids = [ed.department_id for ed in job.eligible_departments]
+        eligible_dept_names = [
+            ed.department.name for ed in job.eligible_departments if ed.department
+        ]
+        dept_ok = len(eligible_dept_ids) == 0 or (
+            student.department_id is not None and student.department_id in eligible_dept_ids
+        )
+        is_eligible = cgpa_ok and dept_ok
+
+        eligibility_reasons: List[str] = []
+        if not cgpa_ok:
+            if student.cgpa is None:
+                eligibility_reasons.append(
+                    f"CGPA is unrecorded in profile (job requires minimum {float(job.min_cgpa):.2f})."
+                )
+            else:
+                eligibility_reasons.append(
+                    f"CGPA ({float(student.cgpa):.2f}) is below employer cutoff ({float(job.min_cgpa):.2f})."
+                )
+        if not dept_ok:
+            if student.department_id is None:
+                eligibility_reasons.append("Academic department is not assigned in profile.")
+            else:
+                dept_name = student.department.name if student.department else "Your Department"
+                eligibility_reasons.append(
+                    f"Department ({dept_name}) is not among the eligible departments specified for this role."
+                )
+        if is_eligible:
+            eligibility_reasons.append(
+                "All academic criteria met: CGPA cutoff and eligible department criteria satisfied."
+            )
+
+        academic_score = (15.0 if cgpa_ok else 0.0) + (15.0 if dept_ok else 0.0)
+
+        # 2. Skill Competency & Evidence Check (50 pts max)
+        req_skills = [jrs for jrs in job.required_skills if jrs.skill and jrs.skill.is_active]
+        total_req = len(req_skills)
+
+        # Retrieve actual assessment and technical interview round signals
+        assessed_skills_map = await self.repository.get_student_assessed_skills(student.id)
+        existing_plan = await self.repository.get_improvement_plan(student.id, job.id)
+        completed_actions = (
+            {a.skill_id: a for a in existing_plan.actions if a.status == "COMPLETED" and a.skill_id}
+            if existing_plan
+            else {}
+        )
+
+        skills_breakdown: List[SkillEvidenceItem] = []
+        demonstrated_count = 0
+        partial_count = 0
+        missing_evidence_count = 0
+
+        for jrs in req_skills:
+            req_prof = jrs.min_proficiency or ProficiencyLevel.BEGINNER
+            req_num = prof_to_num(req_prof)
+            req_str = prof_to_str(req_prof).capitalize()
+            sk_name = jrs.skill.name
+            sk_id = jrs.skill_id
+
+            has_profile = sk_id in student_skill_map
+            has_assessment = sk_id in assessed_skills_map
+            action_completed = completed_actions.get(sk_id)
+
+            stu_ss = student_skill_map.get(sk_id)
+            stu_num = prof_to_num(stu_ss.proficiency) if stu_ss else 0
+            stu_str = prof_to_str(stu_ss.proficiency).capitalize() if stu_ss else None
+
+            # Case 1: Verified via formal recruitment assessment or technical round
+            if has_assessment:
+                ass_info = assessed_skills_map[sk_id]
+                ass_prof = ass_info.get("min_proficiency") or ProficiencyLevel.BEGINNER
+                ass_num = prof_to_num(ass_prof)
+                # Supported proficiency is verified by the passed assessment
+                effective_num = max(stu_num, ass_num)
+                effective_str = stu_str if (stu_str and stu_num >= ass_num) else prof_to_str(ass_prof).capitalize()
+
+                if effective_num >= req_num:
+                    demonstrated_count += 1
+                    status = "DEMONSTRATED"
+                else:
+                    partial_count += 1
+                    status = "PARTIAL_EVIDENCE"
+
+                evidence_summary = (
+                    f"Assessed & Verified: Passed {ass_info['round_type']} ({ass_info['result']}) for "
+                    f"{ass_info['job_title']} at {ass_info['company_name']}."
+                )
+                evidence_ref = f"{ass_info['round_type']} ({ass_info['result']}) - {ass_info['company_name']}"
+
+                skills_breakdown.append(
+                    SkillEvidenceItem(
+                        skill_id=sk_id,
+                        skill_name=sk_name,
+                        required_proficiency=req_str,
+                        student_proficiency=effective_str,
+                        status=status,
+                        is_verified=True,
+                        evidence_source="ASSESSMENT_VERIFIED",
+                        evidence_reference=evidence_ref,
+                        practice_completed=bool(action_completed),
+                        evidence_summary=evidence_summary,
+                    )
+                )
+
+            # Case 2: Self-reported on student profile (no passed recruitment assessment yet)
+            elif has_profile:
+                if stu_num >= req_num:
+                    demonstrated_count += 1
+                    status = "DEMONSTRATED"
+                    status_desc = f"Meets required cutoff at {stu_str} level (self-reported)"
+                else:
+                    partial_count += 1
+                    status = "PARTIAL_EVIDENCE"
+                    status_desc = f"Partially supported: profile has {stu_str}; target requirement is {req_str}"
+
+                if action_completed:
+                    act_ref = action_completed.evidence_reference or "Practice activity completed"
+                    evidence_summary = (
+                        f"{status_desc}. Formative practice completed ({act_ref}); "
+                        f"formal technical assessment verification pending."
+                    )
+                    evidence_src = "PRACTICE_COMPLETED"
+                    evidence_ref = act_ref
+                else:
+                    evidence_summary = (
+                        f"{status_desc}. Self-reported on profile; no formal recruitment assessment on record."
+                    )
+                    evidence_src = "SELF_REPORTED"
+                    evidence_ref = "Student profile inventory"
+
+                skills_breakdown.append(
+                    SkillEvidenceItem(
+                        skill_id=sk_id,
+                        skill_name=sk_name,
+                        required_proficiency=req_str,
+                        student_proficiency=stu_str,
+                        status=status,
+                        is_verified=False,
+                        evidence_source=evidence_src,
+                        evidence_reference=evidence_ref,
+                        practice_completed=bool(action_completed),
+                        evidence_summary=evidence_summary,
+                    )
+                )
+
+            # Case 3: Missing from profile
+            else:
+                missing_evidence_count += 1
+                if action_completed:
+                    act_ref = action_completed.evidence_reference or "Practice activity completed"
+                    evidence_summary = (
+                        f"Practice task completed ({act_ref}), but {sk_name} is not recorded in "
+                        f"your profile skills inventory or verified by formal assessment."
+                    )
+                    evidence_src = "PRACTICE_COMPLETED"
+                    evidence_ref = act_ref
+                else:
+                    evidence_summary = (
+                        f"Unverified on platform: {sk_name} is not recorded in your profile skills inventory."
+                    )
+                    evidence_src = "NONE"
+                    evidence_ref = None
+
+                skills_breakdown.append(
+                    SkillEvidenceItem(
+                        skill_id=sk_id,
+                        skill_name=sk_name,
+                        required_proficiency=req_str,
+                        student_proficiency=None,
+                        status="UNVERIFIED_OR_MISSING",
+                        is_verified=False,
+                        evidence_source=evidence_src,
+                        evidence_reference=evidence_ref,
+                        practice_completed=bool(action_completed),
+                        evidence_summary=evidence_summary,
+                    )
+                )
+
+
+        if total_req == 0:
+            skill_score = 50.0
+        else:
+            skill_score = round(
+                ((demonstrated_count * 1.0 + partial_count * 0.5) / total_req) * 50.0, 1
+            )
+
+        # 3. Preparation & Document Readiness (20 pts max)
+        resume_score = 10.0 if has_default_resume else 0.0
+        profile_completeness_pts = (
+            10.0
+            if (student.cgpa is not None and student.department_id is not None and len(student_skills) >= 3)
+            else 5.0
+        )
+        prep_score = resume_score + profile_completeness_pts
+
+        # 4. Total Deterministic Score
+        raw_score = academic_score + skill_score + prep_score
+        final_readiness_score = round(max(0.0, min(100.0, raw_score)), 1)
+
+        if final_readiness_score >= 80.0:
+            tier = "High Match"
+        elif final_readiness_score >= 60.0:
+            tier = "Moderate Match"
+        elif final_readiness_score >= 40.0:
+            tier = "Developing"
+        else:
+            tier = "Action Required"
+
+        # 5. Historical Round Signals
+        past_rounds = await self.repository.get_student_past_round_signals(student.id)
+        signals: List[HistoricalRoundSignal] = []
+        for r in past_rounds[:4]:
+            res_str = r.result.value if hasattr(r.result, "value") else str(r.result)
+            sig_type = "POSITIVE" if res_str == "Passed" else ("ATTENTION_NEEDED" if res_str == "Failed" else "NEUTRAL")
+            r_type = r.round_type.value if hasattr(r.round_type, "value") else str(r.round_type)
+            signals.append(
+                HistoricalRoundSignal(
+                    round_type=r_type,
+                    result=res_str,
+                    notes=r.notes,
+                    signal_type=sig_type,
+                )
+            )
+
+        explanation = (
+            f"Readiness score of {final_readiness_score}/100.0 based on 3 deterministic pillars: "
+            f"Academic Eligibility ({academic_score:.1f}/30.0 pts), "
+            f"Skill Evidence Match ({skill_score:.1f}/50.0 pts), and "
+            f"Platform Document Preparation ({prep_score:.1f}/20.0 pts)."
+        )
+
+        limitations = (
+            "This assessment represents a deterministic matching indicator derived strictly from recorded platform "
+            "evidence and employer criteria. It reflects profile alignment and does not constitute a guarantee of selection."
+        )
+
+        return JobReadinessAssessmentResponse(
+            job_id=job.id,
+            job_title=job.title,
+            company_name=job.company.name if job.company else "",
+            ctc_lpa=float(job.ctc_lpa) if job.ctc_lpa else None,
+            readiness_score=final_readiness_score,
+            readiness_tier=tier,
+            is_eligible=is_eligible,
+            cgpa_eligible=cgpa_ok,
+            student_cgpa=float(student.cgpa) if student.cgpa is not None else None,
+            min_cgpa=float(job.min_cgpa) if job.min_cgpa is not None else None,
+            department_eligible=dept_ok,
+            student_department=student.department.name if student.department else None,
+            eligible_departments=eligible_dept_names,
+            eligibility_reasons=eligibility_reasons,
+            total_required_skills=total_req,
+            demonstrated_count=demonstrated_count,
+            partial_count=partial_count,
+            missing_evidence_count=missing_evidence_count,
+            skills_breakdown=skills_breakdown,
+            historical_signals=signals,
+            score_breakdown={
+                "academic_points": academic_score,
+                "skill_points": skill_score,
+                "preparation_points": prep_score,
+            },
+            scoring_explanation=explanation,
+            limitations_notice=limitations,
+        )
+
+    async def get_or_create_improvement_plan(
+        self, user_id: int, job_id: int
+    ) -> ImprovementPlanResponse:
+        """
+        Generate or refresh an explainable Personalized Improvement Plan for a specific job.
+        Prioritizes missing mandatory skills and insufficient proficiencies into structured actions.
+        """
+        student = await self.repository.get_student_by_user_id(user_id)
+        if not student:
+            raise NotFoundError("Student profile not found.")
+
+        job = await self.repository.get_active_visible_job_by_id(job_id)
+        if not job:
+            raise NotFoundError(f"Job with ID {job_id} not found or is not currently active.")
+
+        assessment = await self.assess_job_readiness(user_id, job_id)
+        company_name = job.company.name if job.company else "the recruiting company"
+
+        actions_data: List[dict] = []
+
+        # 1. Address Missing or Unverified Skills (HIGH priority)
+        for sk in assessment.skills_breakdown:
+            if sk.status == "UNVERIFIED_OR_MISSING":
+                activity = get_suggested_activity_for_skill(sk.skill_name, sk.required_proficiency)
+                actions_data.append(
+                    {
+                        "skill_id": sk.skill_id,
+                        "skill_name": sk.skill_name,
+                        "current_proficiency": None,
+                        "target_proficiency": sk.required_proficiency,
+                        "priority": "HIGH" if assessment.is_eligible else "MEDIUM",
+                        "status": "PENDING",
+                        "reason": f"Required prerequisite for {job.title} at {company_name}. Currently unverified in your profile.",
+                        "suggested_activity": activity,
+                        "completion_criteria": f"Demonstrate practical proficiency in {sk.skill_name} at {sk.required_proficiency} tier and add it to your student profile skills inventory.",
+                    }
+                )
+
+        # 2. Address Partially Supported Skills (MEDIUM priority)
+        for sk in assessment.skills_breakdown:
+            if sk.status == "PARTIAL_EVIDENCE":
+                activity = get_suggested_activity_for_skill(sk.skill_name, sk.required_proficiency)
+                actions_data.append(
+                    {
+                        "skill_id": sk.skill_id,
+                        "skill_name": sk.skill_name,
+                        "current_proficiency": sk.student_proficiency,
+                        "target_proficiency": sk.required_proficiency,
+                        "priority": "MEDIUM",
+                        "status": "PENDING",
+                        "reason": f"You have recorded {sk.student_proficiency} in {sk.skill_name}, but {job.title} specifically requires {sk.required_proficiency} proficiency.",
+                        "suggested_activity": activity,
+                        "completion_criteria": f"Upgrade recorded proficiency in {sk.skill_name} from {sk.student_proficiency} to {sk.required_proficiency} with demonstrated project milestones.",
+                    }
+                )
+
+        # 3. Document Preparation Action if default resume missing
+        resumes = await self.repository.get_student_resumes(student.id)
+        if not any(r.is_default for r in resumes):
+            actions_data.append(
+                {
+                    "skill_id": None,
+                    "skill_name": "Default Resume Document",
+                    "current_proficiency": None,
+                    "target_proficiency": "Active",
+                    "priority": "HIGH",
+                    "status": "PENDING",
+                    "reason": f"Applying for {job.title} requires a designated default resume document for recruiter review.",
+                    "suggested_activity": "Upload a polished, ATS-compliant PDF resume in Resume Management and mark it as default.",
+                    "completion_criteria": "Active default resume document designated in platform.",
+                }
+            )
+
+        # If zero gaps exist (100% match)
+        if not actions_data:
+            actions_data.append(
+                {
+                    "skill_id": None,
+                    "skill_name": "Technical Interview Practice",
+                    "current_proficiency": "Advanced",
+                    "target_proficiency": "Interview Ready",
+                    "priority": "LOW",
+                    "status": "PENDING",
+                    "reason": f"You already meet all stated skill requirements for {job.title}! Maintain competitive edge with mock interview practice.",
+                    "suggested_activity": f"Conduct timed system design and algorithmic problem solving targeted for {company_name} technical rounds.",
+                    "completion_criteria": "Review core architectural patterns and complete 3 mock interview questions.",
+                }
+            )
+
+        plan = await self.repository.create_or_update_improvement_plan(
+            student.id, job.id, actions_data
+        )
+        return self._plan_to_response(plan, job)
+
+    async def get_improvement_plan(
+        self, user_id: int, job_id: int
+    ) -> Optional[ImprovementPlanResponse]:
+        """Fetch existing improvement plan for student and job if one has been generated."""
+        student = await self.repository.get_student_by_user_id(user_id)
+        if not student:
+            raise NotFoundError("Student profile not found.")
+
+        job = await self.repository.get_active_visible_job_by_id(job_id)
+        if not job:
+            raise NotFoundError(f"Job with ID {job_id} not found or is not currently active.")
+
+        plan = await self.repository.get_improvement_plan(student.id, job.id)
+        if not plan:
+            return None
+        return self._plan_to_response(plan, job)
+
+    async def update_plan_action_status(
+        self,
+        user_id: int,
+        action_id: int,
+        new_status: str,
+        evidence_source: Optional[str] = None,
+        evidence_reference: Optional[str] = None,
+    ) -> ImprovementPlanActionResponse:
+        """Update an action's progress status (PENDING -> IN_PROGRESS -> COMPLETED) with ownership validation."""
+        student = await self.repository.get_student_by_user_id(user_id)
+        if not student:
+            raise NotFoundError("Student profile not found.")
+
+        action = await self.repository.get_action_by_id_and_student(action_id, student.id)
+        if not action:
+            raise NotFoundError("Improvement plan action not found or access denied.")
+
+        updated_action = await self.repository.update_action_status(
+            action, new_status, evidence_source=evidence_source, evidence_reference=evidence_reference
+        )
+        return ImprovementPlanActionResponse(
+            id=updated_action.id,
+            plan_id=updated_action.plan_id,
+            skill_id=updated_action.skill_id,
+            skill_name=updated_action.skill_name,
+            current_proficiency=updated_action.current_proficiency,
+            target_proficiency=updated_action.target_proficiency,
+            priority=updated_action.priority,
+            status=updated_action.status,
+            reason=updated_action.reason,
+            suggested_activity=updated_action.suggested_activity,
+            completion_criteria=updated_action.completion_criteria,
+            evidence_source=updated_action.evidence_source,
+            evidence_reference=updated_action.evidence_reference,
+            completed_at=updated_action.completed_at,
+            created_at=updated_action.created_at,
+            updated_at=updated_action.updated_at,
+        )
+
+    async def ask_job_mentor_advice(
+        self, user_id: int, job_id: int, request: JobMentorAdviceRequest
+    ) -> JobMentorAdviceResponse:
+        """
+        Connects AI Career Mentor directly to the student's job readiness assessment and improvement plan.
+        Provides resilient fallback if provider encounters quota or connectivity issues.
+        """
+        assessment = await self.assess_job_readiness(user_id, job_id)
+        plan = await self.get_or_create_improvement_plan(user_id, job_id)
+
+        job_title = assessment.job_title
+        company = assessment.company_name
+        score = assessment.readiness_score
+
+        demonstrated = [sk.skill_name for sk in assessment.skills_breakdown if sk.status == "DEMONSTRATED"]
+        partial = [
+            f"{sk.skill_name} ({sk.student_proficiency} -> {sk.required_proficiency})"
+            for sk in assessment.skills_breakdown
+            if sk.status == "PARTIAL_EVIDENCE"
+        ]
+        missing = [sk.skill_name for sk in assessment.skills_breakdown if sk.status == "UNVERIFIED_OR_MISSING"]
+        actions = [f"- [{act.priority}] {act.skill_name}: {act.suggested_activity}" for act in plan.actions[:3]]
+
+        system_instruction = (
+            "You are Career Compass AI Mentor, a campus placement coach specializing in company-specific technical preparation. "
+            "Help the student understand their job-specific readiness assessment and execute their personalized improvement plan.\n\n"
+            f"TARGET JOB: {job_title} at {company}\n"
+            f"READINESS SCORE: {score}/100 ({assessment.readiness_tier})\n"
+            f"ELIGIBILITY STATUS: {'Eligible' if assessment.is_eligible else 'Ineligible'}\n"
+            f"DEMONSTRATED SKILLS: {', '.join(demonstrated) or 'None recorded'}\n"
+            f"PARTIALLY SUPPORTED: {', '.join(partial) or 'None'}\n"
+            f"UNVERIFIED / GAPS: {', '.join(missing) or 'None'}\n"
+            f"TOP PLANNED ACTIONS:\n{chr(10).join(actions)}\n\n"
+            "INSTRUCTIONS:\n"
+            "1. Give direct, actionable technical advice on how to execute the top planned actions before campus recruitment drives.\n"
+            "2. Explain how to discuss partially supported skills with technical interviewers (e.g., highlighting growth velocity and foundational knowledge).\n"
+            "3. Format cleanly with clear bullet points, practical interview tips, and motivating tone.\n"
+            "4. Do not invent salary guarantees or unverified facts."
+        )
+
+        user_prompt = (
+            request.question
+            if request.question and request.question.strip()
+            else f"How should I prioritize my preparation and execute my improvement plan for {job_title} at {company}?"
+        )
+
+        try:
+            advice = await self.gemini_provider.generate_response(
+                system_instruction=system_instruction,
+                user_prompt=user_prompt,
+            )
+            model_used = self.gemini_provider.model
+        except Exception:
+            # Deterministic, helpful fallback so student experience NEVER crashes if Gemini is rate limited
+            model_used = "Deterministic Guidance Engine (Fallback)"
+            advice = (
+                f"### Strategic Preparation for {job_title} at {company}\n\n"
+                f"**Current Match Tier:** {assessment.readiness_tier} ({score}/100.0)\n\n"
+                "**1. High-Priority Action Items:**\n"
+                + "\n".join(f"- **{act.skill_name}**: {act.suggested_activity}" for act in plan.actions if act.priority == "HIGH")
+                + "\n\n**2. Interview Strategy:**\n"
+                "- Review core data structures and ensure you can explain your demonstrated skills with metrics.\n"
+                "- Be prepared to discuss ongoing projects bridging your unverified skills during technical rounds."
+            )
+
+        return JobMentorAdviceResponse(
+            advice=advice,
+            grounded_job_title=job_title,
+            grounded_company=company,
+            readiness_score=score,
+            model_used=model_used,
+        )
+
+
+PRACTICE_TEMPLATES = {
+    "python": "Build a modular async backend service using FastAPI/PostgreSQL with JWT authentication and comprehensive pytest unit tests.",
+    "sql": "Design a relational schema with normalization, write complex joins, aggregated window functions, and optimize query execution plans.",
+    "react": "Develop a responsive single-page web application featuring TypeScript, centralized state management, and real-time UI updates.",
+    "fastapi": "Implement asynchronous REST endpoints with Pydantic request validation, dependency injection, and Dockerized deployment.",
+    "docker": "Containerize a multi-tier web application using Docker and Docker Compose, configuring network bridges and persistent volumes.",
+    "git": "Practice team Git workflows: branch protection, feature branching, resolving merge conflicts, and interactive rebase.",
+    "java": "Build an object-oriented backend service using Spring Boot, JPA/Hibernate, and implement unit tests with JUnit and Mockito.",
+    "c++": "Solve 20+ algorithmic challenges focusing on memory management, STL containers, dynamic programming, and time/space complexity.",
+    "aws": "Deploy a containerized application to AWS ECS/Fargate, configuring IAM roles, S3 storage buckets, and CloudWatch metrics.",
+    "machine learning": "Train and evaluate a supervised model on a real dataset using scikit-learn, implementing feature engineering and cross-validation.",
+}
+
+
+def get_suggested_activity_for_skill(skill_name: str, target_proficiency: str) -> str:
+    key = skill_name.lower().strip()
+    for t_key, t_act in PRACTICE_TEMPLATES.items():
+        if t_key in key:
+            return t_act
+    return (
+        f"Complete a portfolio-grade project implementing core {skill_name} capabilities "
+        f"at {target_proficiency} level, focusing on robust error handling, tests, and documentation."
+    )

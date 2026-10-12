@@ -108,7 +108,7 @@ export function Sidebar({ role, open, onClose, collapsed }: SidebarProps) {
         </ScrollArea>
 
         {/* Footer — hidden when collapsed to keep the rail clean */}
-        {!collapsed && (
+        {/* {!collapsed && (
           <div className="shrink-0 border-t p-4">
             <div className="rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 p-3">
               <p className="text-xs font-semibold">Need help?</p>
@@ -120,7 +120,7 @@ export function Sidebar({ role, open, onClose, collapsed }: SidebarProps) {
               </Button>
             </div>
           </div>
-        )}
+        )} */}
       </aside>
     </>
   );

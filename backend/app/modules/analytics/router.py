@@ -9,6 +9,7 @@ from app.modules.students.repository import StudentRepository
 from app.core.exceptions import ForbiddenError
 
 from app.modules.analytics.schemas import StaffAnalyticsOverview, StudentAnalyticsOverview
+from app.modules.intelligence.schemas import DepartmentSkillGapsOverview
 from app.modules.analytics.repository import AnalyticsRepository
 from app.modules.analytics.service import AnalyticsService
 
@@ -25,6 +26,17 @@ async def get_staff_overview(
 ):
     return await service.get_staff_overview()
 
+@router.get("/staff/analytics/department-skill-gaps", response_model=DepartmentSkillGapsOverview)
+@router.get("/staff/department-skill-gaps", response_model=DepartmentSkillGapsOverview)
+async def get_staff_department_skill_gaps(
+    _: RequireStaff,
+    service: AnalyticsService = Depends(get_analytics_service)
+):
+    """
+    Staff-only view of aggregated skill gaps and demand by department across active jobs.
+    """
+    return await service.get_department_skill_gaps()
+
 @router.get("/student/analytics/overview", response_model=StudentAnalyticsOverview)
 async def get_student_overview(
     user: RequireStudent,
@@ -37,3 +49,4 @@ async def get_student_overview(
         raise ForbiddenError("Student profile required.")
 
     return await service.get_student_overview(student.id)
+

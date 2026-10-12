@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { analyticsService, StaffAnalyticsOverview } from '@/features/analytics/services/analytics.service';
+import { DepartmentSkillGapsOverview } from '@/features/student/types/intelligence.types';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -41,6 +42,7 @@ export default function StaffDashboard() {
   const { toast } = useToast();
   
   const [data, setData] = useState<StaffAnalyticsOverview | null>(null);
+  const [deptGaps, setDeptGaps] = useState<DepartmentSkillGapsOverview | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -50,8 +52,12 @@ export default function StaffDashboard() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const res = await analyticsService.getStaffOverview();
+      const [res, gapsRes] = await Promise.all([
+        analyticsService.getStaffOverview(),
+        analyticsService.getDepartmentSkillGaps().catch(() => null),
+      ]);
       setData(res);
+      setDeptGaps(gapsRes);
     } catch (error) {
       toast({
         title: 'Error',
@@ -62,6 +68,7 @@ export default function StaffDashboard() {
       setLoading(false);
     }
   };
+
 
   const modules = [
     { title: 'Student Directory', icon: Users, path: '/staff/students', badge: 'Core Directory' },
@@ -250,6 +257,70 @@ export default function StaffDashboard() {
     );
   };
 
+  const renderDepartmentSkillGaps = () => {
+    if (!deptGaps || deptGaps.departments.length === 0) return null;
+
+    return (
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Department Technical Skill Gaps & Industry Demand
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Aggregated technical skill demand vs student catalog registrations across {deptGaps.total_active_jobs_analyzed} active jobs
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {deptGaps.departments.map((dept) => (
+            <Card key={dept.department_id} className="border-muted hover:border-primary/40 transition-colors">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-semibold">{dept.department_name}</CardTitle>
+                  <Badge variant="outline" className="text-xs">
+                    {dept.student_count} student{dept.student_count === 1 ? '' : 's'}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3 text-xs">
+                <div>
+                  <span className="font-semibold text-muted-foreground block mb-1">In-Demand Skills:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {dept.in_demand_skills.length > 0 ? (
+                      dept.in_demand_skills.map((s) => (
+                        <Badge key={s} variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-[11px]">
+                          {s}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-muted-foreground italic">None active</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground block mb-1">Top Missing / Need Training:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {dept.top_missing_skills.length > 0 ? (
+                      dept.top_missing_skills.map((s) => (
+                        <Badge key={s} variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 text-[11px]">
+                          {s}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-emerald-600 font-medium">All in-demand skills covered</span>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <AppLayout role="staff" userName={userEmail} userRole="Staff" avatarText={avatarText}>
       <PageContainer>
@@ -267,6 +338,8 @@ export default function StaffDashboard() {
         {renderStats()}
         {renderCharts()}
         {renderRecruitmentSummary()}
+        {renderDepartmentSkillGaps()}
+
 
         <h3 className="text-lg font-semibold mb-4 tracking-tight">Navigation</h3>
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 pb-10">
