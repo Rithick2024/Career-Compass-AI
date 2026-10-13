@@ -17,4 +17,9 @@ from app.modules.applications.models import Application  # noqa: F401
 
 from app.modules.placements.models import Placement  # noqa: F401
 from app.modules.application_rounds.models import ApplicationRound  # noqa: F401
-from app.modules.intelligence.models import ImprovementPlan, ImprovementPlanAction  # noqa: F401
+from app.modules.intelligence.models import (  # noqa: F401
+    ImprovementPlan,
+    ImprovementPlanAction,
+    MentorSession,
+    MentorMessage,
+)

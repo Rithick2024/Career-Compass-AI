@@ -5,6 +5,8 @@ import {
   JobMatchResponse,
   MentorChatRequest,
   MentorChatResponse,
+  MentorSessionSummary,
+  MentorSessionDetail,
   JobReadinessAssessmentResponse,
   ImprovementPlanResponse,
   ImprovementPlanActionResponse,
@@ -33,6 +35,30 @@ export const intelligenceService = {
     const response = await api.post<MentorChatResponse>(
       '/student/intelligence/mentor/chat',
       request
+    );
+    return response.data;
+  },
+
+  async getMentorSessions(): Promise<MentorSessionSummary[]> {
+    const response = await api.get<MentorSessionSummary[]>('/student/intelligence/mentor/sessions');
+    return response.data;
+  },
+
+  async createMentorSession(): Promise<MentorSessionDetail> {
+    const response = await api.post<MentorSessionDetail>('/student/intelligence/mentor/sessions');
+    return response.data;
+  },
+
+  async getMentorSession(sessionId: number): Promise<MentorSessionDetail> {
+    const response = await api.get<MentorSessionDetail>(
+      `/student/intelligence/mentor/sessions/${sessionId}`
+    );
+    return response.data;
+  },
+
+  async deleteMentorSession(sessionId: number): Promise<{ success: boolean; deleted_id?: number }> {
+    const response = await api.delete<{ success: boolean; deleted_id?: number }>(
+      `/student/intelligence/mentor/sessions/${sessionId}`
     );
     return response.data;
   },

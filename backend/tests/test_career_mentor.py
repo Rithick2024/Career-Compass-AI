@@ -316,3 +316,102 @@ async def test_mentor_read_only_invariant(client: AsyncClient, db_session):
 
     # Student auto-provision on first lookup is allowed, but no unexpected new skills or placements
     assert count_skills_before == count_skills_after
+
+
+# ============================================================================
+# 6. PAYLOAD FIX & SESSION PERSISTENCE
+# ============================================================================
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_mentor_handles_long_previous_model_history(client: AsyncClient):
+    """
+    Regression test: Verifies that when previous model response is > 1500 chars,
+    the client request does NOT fail with 422 VALIDATION_ERROR.
+    """
+    _, headers = await _register_and_login_student(client, "longhistory-student@example.com")
+    long_previous_reply = "A" * 2500
+
+    with patch(
+        "app.modules.intelligence.service.GeminiProvider.generate_response",
+        new_callable=AsyncMock,
+    ) as mock_generate:
+        mock_generate.return_value = "Follow up advice."
+
+        res = await client.post(
+            "/api/v1/student/intelligence/mentor/chat",
+            json={
+                "message": "Plans to master this?",
+                "history": [
+                    {"role": "user", "content": "What are my skills?"},
+                    {"role": "model", "content": long_previous_reply},
+                ],
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["response"] == "Follow up advice."
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_mentor_session_crud_and_persistence(client: AsyncClient):
+    """
+    Verifies that students can create a clean new chat session, send messages
+    referencing session_id without sending bulky history payloads, and fetch history.
+    """
+    _, headers = await _register_and_login_student(client, "sessions-student@example.com")
+
+    # 1. Create a fresh session
+    create_res = await client.post(
+        "/api/v1/student/intelligence/mentor/sessions",
+        headers=headers,
+    )
+    assert create_res.status_code == 200
+    session_data = create_res.json()
+    session_id = session_data["id"]
+    assert session_data["messages"] == []
+
+    # 2. Send message with session_id (NO history payload sent)
+    with patch(
+        "app.modules.intelligence.service.GeminiProvider.generate_response",
+        new_callable=AsyncMock,
+    ) as mock_generate:
+        mock_generate.return_value = "Here is your first advice."
+
+        chat_res = await client.post(
+            "/api/v1/student/intelligence/mentor/chat",
+            json={"message": "What is Python?", "session_id": session_id},
+            headers=headers,
+        )
+        assert chat_res.status_code == 200
+        assert chat_res.json()["session_id"] == session_id
+
+    # 3. Retrieve session detail and verify persisted messages
+    detail_res = await client.get(
+        f"/api/v1/student/intelligence/mentor/sessions/{session_id}",
+        headers=headers,
+    )
+    assert detail_res.status_code == 200
+    detail_data = detail_res.json()
+    assert len(detail_data["messages"]) == 2
+    assert detail_data["messages"][0]["role"] == "user"
+    assert detail_data["messages"][0]["content"] == "What is Python?"
+    assert detail_data["messages"][1]["role"] == "model"
+    assert detail_data["messages"][1]["content"] == "Here is your first advice."
+
+    # 4. List sessions
+    list_res = await client.get(
+        "/api/v1/student/intelligence/mentor/sessions",
+        headers=headers,
+    )
+    assert list_res.status_code == 200
+    assert any(s["id"] == session_id for s in list_res.json())
+
+    # 5. Delete session
+    del_res = await client.delete(
+        f"/api/v1/student/intelligence/mentor/sessions/{session_id}",
+        headers=headers,
+    )
+    assert del_res.status_code == 200
+    assert del_res.json()["success"] is True
+

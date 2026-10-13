@@ -21,6 +21,9 @@ from app.modules.intelligence.schemas import (
     MentorChatRequest,
     MentorChatResponse,
     MentorContextSummary,
+    MentorMessageResponse,
+    MentorSessionSummaryResponse,
+    MentorSessionDetailResponse,
     JobReadinessAssessmentResponse,
     SkillEvidenceItem,
     HistoricalRoundSignal,
@@ -468,13 +471,12 @@ class IntelligenceService:
         self, user_id: int, request: MentorChatRequest
     ) -> MentorChatResponse:
         """
-        Grounded AI Career Mentor answering placement, skill, and interview preparation questions.
+        Grounded AI Career Mentor answering placement, skill, application, and interview preparation questions.
 
         Strict Privacy & Security:
-        - Retrieves only sanitized educational standing & skills for the authenticated student.
+        - Retrieves only sanitized educational standing, verified skills, and placement metrics for the authenticated student.
         - Zero personal identifiers (no names, emails, phones, or addresses) sent to provider.
-        - Grounded in active campus hiring requirements when available.
-        - Read-only execution: no database mutations.
+        - Grounded in active campus hiring drives and student application status.
         """
         student = await self.repository.get_student_by_user_id(user_id)
         student_skills = await self.repository.get_student_skills(student.id)
@@ -482,6 +484,9 @@ class IntelligenceService:
             ss for ss in student_skills if ss.skill and ss.skill.is_active
         ]
         active_jobs = await self.repository.get_active_visible_jobs()
+        applications = await self.repository.get_student_applications_with_details(student.id)
+        resumes = await self.repository.get_student_resumes(student.id)
+        is_placed = await self.repository.has_accepted_placement(student.id)
 
         dept_name = student.department.name if student.department else None
         grad_year = student.graduation_year
@@ -494,10 +499,48 @@ class IntelligenceService:
             for ss in active_student_skills[:12]
         ) or "None recorded yet"
 
+        skills_detail_lines = []
+        for ss in active_student_skills:
+            cat = f" (Category: {ss.skill.category})" if ss.skill.category else ""
+            skills_detail_lines.append(f"- {ss.skill.name}: {prof_to_str(ss.proficiency).capitalize()}{cat}")
+        skills_detailed_str = "\n".join(skills_detail_lines) if skills_detail_lines else "No skills registered on profile yet."
+
+        app_lines = []
+        for a in applications:
+            c_name = a.job.company.name if a.job and a.job.company else "Campus Drive"
+            j_title = a.job.title if a.job else "Role"
+            ctc_val = f" [₹{float(a.job.ctc_lpa):.1f} LPA]" if a.job and a.job.ctc_lpa else ""
+            round_info = ""
+            if a.rounds:
+                sorted_r = sorted(a.rounds, key=lambda r: r.id)
+                last_r = sorted_r[-1]
+                r_type = last_r.round_type.value if hasattr(last_r.round_type, "value") else str(last_r.round_type)
+                r_res = last_r.result.value if last_r.result and hasattr(last_r.result, "value") else "In Progress"
+                round_info = f" | Current Round: {r_type} ({r_res})"
+            app_lines.append(f"- {j_title} at {c_name}{ctc_val} -> Application Status: {a.status.value}{round_info}")
+        applications_detailed_str = "\n".join(app_lines) if app_lines else "No job applications submitted yet."
+
+        active_jobs_lines = []
+        for j in active_jobs[:10]:
+            c_name = j.company.name if j.company else "Campus Drive"
+            ctc_str = f"₹{float(j.ctc_lpa):.1f} LPA" if j.ctc_lpa else "Disclosed during drive"
+            cgpa_req = f"Min CGPA: {float(j.min_cgpa):.1f}" if j.min_cgpa else "No min CGPA"
+            is_cgpa_ok = (student.cgpa is not None and float(student.cgpa) >= float(j.min_cgpa)) if j.min_cgpa else True
+            dept_ok = True
+            if j.eligible_departments:
+                dept_ids = {ed.department_id for ed in j.eligible_departments}
+                dept_ok = (student.department_id in dept_ids) if student.department_id else False
+            elig_str = "Eligible" if (is_cgpa_ok and dept_ok) else "Check criteria"
+            active_jobs_lines.append(f"- {j.title} at {c_name} (Package: {ctc_str}, {cgpa_req}, Eligibility: {elig_str})")
+        active_jobs_detailed_str = "\n".join(active_jobs_lines) if active_jobs_lines else "No active campus placement drives currently open."
+
         active_roles = list(dict.fromkeys(job.title for job in active_jobs))[:5]
         active_roles_str = (
             ", ".join(active_roles) if active_roles else "General technical & engineering roles"
         )
+
+        applied_count = len(applications)
+        active_apps_count = len([a for a in applications if a.status.value not in ("Rejected", "Withdrawn")])
 
         context_summary = MentorContextSummary(
             department=dept_name,
@@ -506,30 +549,63 @@ class IntelligenceService:
             skills_count=len(active_student_skills),
             top_skills=top_skill_names,
             active_campus_jobs_count=len(active_jobs),
+            applied_jobs_count=applied_count,
+            active_applications_count=active_apps_count,
+            is_placed=is_placed,
+            resumes_count=len(resumes),
         )
+
+        # Session & conversation history management
+        session = None
+        history_payload: List[Dict[str, str]] = []
+
+        if request.session_id is not None:
+            session = await self.repository.get_mentor_session_by_id(student.id, request.session_id)
+            if session and session.messages:
+                for msg in session.messages[-8:]:
+                    history_payload.append({"role": msg.role, "content": msg.content})
+        elif request.history:
+            for msg in request.history[-6:]:
+                history_payload.append({"role": msg.role, "content": msg.content})
+            session = await self.repository.get_or_create_mentor_session(
+                student.id, initial_title=request.message[:45]
+            )
+        else:
+            session = await self.repository.get_or_create_mentor_session(
+                student.id, initial_title=request.message[:45]
+            )
+            if session and session.messages:
+                for msg in session.messages[-8:]:
+                    history_payload.append({"role": msg.role, "content": msg.content})
 
         system_instruction = (
             "You are Career Compass AI Mentor, an expert campus placement coach and technical career mentor. "
             "Your goal is to help undergraduate and postgraduate students prepare for campus placements, technical interviews, and software careers.\n\n"
-            "STUDENT PROFILE CONTEXT (Grounded data from verified platform profile):\n"
+            "STUDENT PROFILE CONTEXT (Verified platform data for the logged-in student):\n"
             f"- Academic Department: {dept_name or 'Not specified'}\n"
             f"- Target Graduation Year: {grad_year or 'Not specified'}\n"
             f"- Academic CGPA Standing: {cgpa_str}\n"
-            f"- Student's Registered Skills & Proficiencies: {skills_summary}\n"
-            f"- Current Active Campus Placement Roles: {active_roles_str}\n\n"
+            f"- Placement Status: {'Offer Accepted / Placed 🎉' if is_placed else 'Seeking Campus Placement'}\n"
+            f"- Uploaded Resumes Count: {len(resumes)}\n"
+            f"- Student's Registered Skills & Proficiencies:\n{skills_detailed_str}\n"
+            f"- Student's Job Applications (Total Applied: {applied_count}, Active: {active_apps_count}):\n{applications_detailed_str}\n"
+            f"- Current Active Campus Placement Drives ({len(active_jobs)} total):\n{active_jobs_detailed_str}\n\n"
+            "CAREER COMPASS AI PLATFORM FEATURES (Guide students to these tabs/routes if they ask about app actions):\n"
+            "- 'Skills Profile' (/student/skills): Add/update technical skills and proficiency tiers.\n"
+            "- 'Campus Jobs' (/student/jobs): View active campus drives, check match percentage, and submit applications.\n"
+            "- 'My Applications' (/student/applications): Track application status, recruitment round progression, and interview outcomes.\n"
+            "- 'Placement Readiness' (/student/readiness): View composite readiness score, skill gap breakdown, and personalized improvement plans.\n"
+            "- 'Resume Manager' (/student/resumes): Upload and manage multiple PDF/DOCX resumes.\n\n"
             "STRICT INSTRUCTIONS:\n"
             "1. Ground your advice in the student's actual department and registered skills when answering role-specific questions.\n"
-            "2. Clearly distinguish between what the student currently possesses in their profile versus your recommendations or suggested next steps.\n"
-            "3. If recommending skill development, suggest concrete, realistic projects with modern tech stacks and technical interview topics.\n"
-            "4. For interview preparation questions, structure advice into practical phases: Core Data Structures/Algorithms, System/Architecture Concepts, and Behavioral/HR communication.\n"
-            "5. If student profile context is sparse (e.g. no skills registered), answer general placement questions cleanly without pretending to know their profile.\n"
-            "6. Keep responses well-formatted with markdown headings, concise bullet points, and actionable next steps.\n"
-            "7. Never claim or guarantee placement offers or invent fictitious institution policies."
+            "2. When the student asks about their profile, skills, applied jobs, application count/status, or available campus jobs, answer accurately and directly using their verified profile data provided above.\n"
+            "3. Clearly distinguish between what the student currently possesses in their profile versus your recommendations or suggested next steps.\n"
+            "4. If recommending skill development, suggest concrete, realistic projects with modern tech stacks and technical interview topics.\n"
+            "5. For interview preparation questions, structure advice into practical phases: Core Data Structures/Algorithms, System/Architecture Concepts, and Behavioral/HR communication.\n"
+            "6. If student profile context is sparse (e.g. no skills registered), answer general placement questions cleanly without pretending to know their profile.\n"
+            "7. Keep responses well-formatted with markdown headings, concise bullet points, and actionable next steps.\n"
+            "8. Never claim or guarantee placement offers or invent fictitious institution policies."
         )
-
-        history_payload = [
-            {"role": msg.role, "content": msg.content} for msg in request.history
-        ]
 
         ai_response_text = await self.gemini_provider.generate_response(
             system_instruction=system_instruction,
@@ -537,11 +613,88 @@ class IntelligenceService:
             history=history_payload,
         )
 
+        model_used = getattr(self.gemini_provider, "last_used_model", self.gemini_provider.model)
+
+        if session is not None:
+            await self.repository.add_mentor_messages(
+                session=session,
+                user_text=request.message,
+                model_text=ai_response_text,
+                model_used=model_used,
+            )
+
         return MentorChatResponse(
             response=ai_response_text,
             grounded_context=context_summary,
-            model_used=self.gemini_provider.model,
+            model_used=model_used,
+            session_id=session.id if session else None,
         )
+
+    async def list_mentor_sessions(self, user_id: int) -> List[MentorSessionSummaryResponse]:
+        student = await self.repository.get_student_by_user_id(user_id)
+        sessions = await self.repository.get_student_mentor_sessions(student.id)
+        res: List[MentorSessionSummaryResponse] = []
+        for s in sessions:
+            last_msg = s.messages[-1].content if s.messages else None
+            preview = (last_msg[:60] + "...") if last_msg and len(last_msg) > 60 else last_msg
+            res.append(
+                MentorSessionSummaryResponse(
+                    id=s.id,
+                    title=s.title,
+                    message_count=len(s.messages),
+                    last_message_preview=preview,
+                    created_at=s.created_at,
+                    updated_at=s.updated_at,
+                )
+            )
+        return res
+
+    async def create_new_mentor_session(
+        self, user_id: int, title: str = "New Conversation"
+    ) -> MentorSessionDetailResponse:
+        student = await self.repository.get_student_by_user_id(user_id)
+        session = await self.repository.create_mentor_session(student.id, title=title)
+        return MentorSessionDetailResponse(
+            id=session.id,
+            title=session.title,
+            messages=[],
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+
+    async def get_mentor_session_detail(
+        self, user_id: int, session_id: int
+    ) -> MentorSessionDetailResponse:
+        student = await self.repository.get_student_by_user_id(user_id)
+        session = await self.repository.get_mentor_session_by_id(student.id, session_id)
+        if not session:
+            raise NotFoundError("Chat session not found.")
+        msg_responses = [
+            MentorMessageResponse(
+                id=m.id,
+                session_id=m.session_id,
+                role=m.role,
+                content=m.content,
+                model_used=m.model_used,
+                created_at=m.created_at,
+            )
+            for m in session.messages
+        ]
+        return MentorSessionDetailResponse(
+            id=session.id,
+            title=session.title,
+            messages=msg_responses,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+
+    async def delete_mentor_session(self, user_id: int, session_id: int) -> dict:
+        student = await self.repository.get_student_by_user_id(user_id)
+        deleted = await self.repository.delete_mentor_session(student.id, session_id)
+        if not deleted:
+            raise NotFoundError("Chat session not found.")
+        return {"success": True, "deleted_id": session_id}
+
 
     def _plan_to_response(self, plan: ImprovementPlan, job: Job) -> ImprovementPlanResponse:
         total = len(plan.actions)

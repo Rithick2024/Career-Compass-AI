@@ -90,3 +90,65 @@ async def test_provider_server_error_raises_service_error():
     provider = GeminiProvider(api_key="valid-key", http_client=mock_client)
     with pytest.raises(AIProviderServiceError):
         await provider.generate_response("system", "hello")
+
+
+@pytest.mark.asyncio
+async def test_provider_failover_to_fallback_model_on_503():
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    resp_503 = MagicMock(spec=httpx.Response)
+    resp_503.status_code = 503
+
+    resp_200 = MagicMock(spec=httpx.Response)
+    resp_200.status_code = 200
+    resp_200.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": "Advice from fallback model."}]
+                }
+            }
+        ]
+    }
+
+    mock_client.post.side_effect = [resp_503, resp_200]
+
+    provider = GeminiProvider(
+        api_key="valid-key",
+        model="primary-model",
+        fallback_models=["fallback-model"],
+        http_client=mock_client,
+    )
+    res = await provider.generate_response("system", "How do I prepare for interviews?")
+    assert res == "Advice from fallback model."
+    assert provider.last_used_model == "fallback-model"
+    assert mock_client.post.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_provider_failover_to_fallback_model_on_timeout():
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    resp_200 = MagicMock(spec=httpx.Response)
+    resp_200.status_code = 200
+    resp_200.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": "Advice after primary timeout."}]
+                }
+            }
+        ]
+    }
+
+    mock_client.post.side_effect = [httpx.TimeoutException("Primary timed out"), resp_200]
+
+    provider = GeminiProvider(
+        api_key="valid-key",
+        model="primary-model",
+        fallback_models=["fallback-model"],
+        http_client=mock_client,
+    )
+    res = await provider.generate_response("system", "Tell me about resumes.")
+    assert res == "Advice after primary timeout."
+    assert provider.last_used_model == "fallback-model"
+    assert mock_client.post.call_count == 2
+

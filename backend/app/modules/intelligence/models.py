@@ -90,3 +90,53 @@ class ImprovementPlanAction(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<ImprovementPlanAction id={self.id} plan_id={self.plan_id} skill={self.skill_name!r} status={self.status}>"
+
+
+class MentorSession(Base):
+    __tablename__ = "mentor_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="New Conversation")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    messages: Mapped[List["MentorMessage"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="MentorMessage.id",
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<MentorSession id={self.id} student_id={self.student_id} title={self.title!r}>"
+
+
+class MentorMessage(Base):
+    __tablename__ = "mentor_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("mentor_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # "user" or "model"
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    model_used: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    session: Mapped["MentorSession"] = relationship(back_populates="messages", lazy="selectin")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<MentorMessage id={self.id} session_id={self.session_id} role={self.role}>"
+

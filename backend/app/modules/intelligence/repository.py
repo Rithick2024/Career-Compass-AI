@@ -20,7 +20,12 @@ from app.modules.application_rounds.models import (
     StaffVerification,
 )
 from app.modules.placements.models import Placement
-from app.modules.intelligence.models import ImprovementPlan, ImprovementPlanAction
+from app.modules.intelligence.models import (
+    ImprovementPlan,
+    ImprovementPlanAction,
+    MentorSession,
+    MentorMessage,
+)
 
 
 class IntelligenceRepository:
@@ -297,4 +302,112 @@ class IntelligenceRepository:
         await self.db.commit()
         await self.db.refresh(action)
         return action
+
+    async def get_student_applications_with_details(self, student_id: int) -> List[Application]:
+        """Fetch all applications for a student with job, company, rounds, and placement eagerly loaded."""
+        stmt = (
+            select(Application)
+            .options(
+                selectinload(Application.job).selectinload(Job.company),
+                selectinload(Application.rounds),
+                selectinload(Application.placement),
+            )
+            .where(Application.student_id == student_id)
+            .order_by(Application.applied_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_student_mentor_sessions(self, student_id: int) -> List[MentorSession]:
+        """Fetch all chat sessions for a student ordered by most recently updated."""
+        stmt = (
+            select(MentorSession)
+            .options(selectinload(MentorSession.messages))
+            .where(MentorSession.student_id == student_id)
+            .order_by(MentorSession.updated_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_mentor_session_by_id(
+        self, student_id: int, session_id: int
+    ) -> Optional[MentorSession]:
+        """Fetch a specific chat session belonging to the student."""
+        stmt = (
+            select(MentorSession)
+            .options(selectinload(MentorSession.messages))
+            .where(MentorSession.id == session_id, MentorSession.student_id == student_id)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_mentor_session(
+        self, student_id: int, title: str = "New Conversation"
+    ) -> MentorSession:
+        """Create a new chat session for a student."""
+        session = MentorSession(student_id=student_id, title=title)
+        self.db.add(session)
+        await self.db.commit()
+        await self.db.refresh(session)
+        return session
+
+    async def get_or_create_mentor_session(
+        self, student_id: int, session_id: Optional[int] = None, initial_title: Optional[str] = None
+    ) -> MentorSession:
+        """Fetch specified session or most recent session, creating one if none exists."""
+        if session_id is not None:
+            existing = await self.get_mentor_session_by_id(student_id, session_id)
+            if existing is not None:
+                return existing
+
+        # If session_id was not passed or not found, try to get the most recent session
+        stmt = (
+            select(MentorSession)
+            .options(selectinload(MentorSession.messages))
+            .where(MentorSession.student_id == student_id)
+            .order_by(MentorSession.updated_at.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        recent = result.scalar_one_or_none()
+        if recent is not None:
+            return recent
+
+        title = initial_title or "New Conversation"
+        return await self.create_mentor_session(student_id, title=title)
+
+    async def delete_mentor_session(self, student_id: int, session_id: int) -> bool:
+        """Delete a chat session belonging to the student."""
+        session = await self.get_mentor_session_by_id(student_id, session_id)
+        if not session:
+            return False
+        await self.db.delete(session)
+        await self.db.commit()
+        return True
+
+    async def add_mentor_messages(
+        self,
+        session: MentorSession,
+        user_text: str,
+        model_text: str,
+        model_used: Optional[str] = None,
+    ) -> None:
+        """Persist user prompt and mentor response, auto-updating session title on first turn."""
+        user_msg = MentorMessage(session_id=session.id, role="user", content=user_text)
+        model_msg = MentorMessage(
+            session_id=session.id, role="model", content=model_text, model_used=model_used
+        )
+        self.db.add(user_msg)
+        self.db.add(model_msg)
+
+        # Generate a clean short title from first prompt if title is default
+        if session.title in ("New Conversation", "General Career Guidance") or not session.title:
+            cleaned = user_text.strip()
+            first_line = cleaned.split("\n")[0].strip()
+            session.title = (first_line[:42] + "...") if len(first_line) > 45 else first_line
+
+        session.updated_at = func.now()
+        await self.db.commit()
+        await self.db.refresh(session)
+
 

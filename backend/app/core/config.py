@@ -72,7 +72,8 @@ class Settings(BaseSettings):
 
     # --- Gemini AI Configuration ---
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3.8-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_FALLBACK_MODELS: str = "gemini-flash-lite-latest,gemini-3.6-flash"
     GEMINI_TIMEOUT_SECONDS: float = 30.0
     GEMINI_MAX_INPUT_CHARS: int = 1500
     GEMINI_MAX_OUTPUT_TOKENS: int = 1000

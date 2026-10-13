@@ -78,7 +78,7 @@ class JobMatchResponse(BaseModel):
 
 class ChatMessage(BaseModel):
     role: str = Field(..., description="Message role: 'user' or 'model'/'assistant'")
-    content: str = Field(..., max_length=1500, description="Message content")
+    content: str = Field(..., max_length=50000, description="Message content")
 
 
 class MentorChatRequest(BaseModel):
@@ -88,10 +88,14 @@ class MentorChatRequest(BaseModel):
         max_length=1500,
         description="Career, skill, project, or interview question from the student",
     )
+    session_id: Optional[int] = Field(
+        None,
+        description="Optional persistent chat session ID. If omitted, an active session is auto-managed.",
+    )
     history: List[ChatMessage] = Field(
         default_factory=list,
-        max_length=6,
-        description="Recent conversation turns (up to 6) for conversational context",
+        max_length=20,
+        description="Optional recent conversation turns for stateless or client-managed history",
     )
 
 
@@ -102,6 +106,42 @@ class MentorContextSummary(BaseModel):
     skills_count: int = 0
     top_skills: List[str] = Field(default_factory=list)
     active_campus_jobs_count: int = 0
+    applied_jobs_count: int = 0
+    active_applications_count: int = 0
+    is_placed: bool = False
+    resumes_count: int = 0
+
+
+class MentorMessageResponse(BaseModel):
+    id: int
+    session_id: int
+    role: str
+    content: str
+    model_used: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MentorSessionSummaryResponse(BaseModel):
+    id: int
+    title: str
+    message_count: int = 0
+    last_message_preview: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MentorSessionDetailResponse(BaseModel):
+    id: int
+    title: str
+    messages: List[MentorMessageResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MentorChatResponse(BaseModel):
@@ -110,6 +150,8 @@ class MentorChatResponse(BaseModel):
         ..., description="Anonymized student profile metrics used to ground this guidance"
     )
     model_used: str = Field(..., description="Configured Gemini model ID that produced this response")
+    session_id: Optional[int] = Field(None, description="Active persistent chat session ID")
+
 
 
 class SkillEvidenceItem(BaseModel):

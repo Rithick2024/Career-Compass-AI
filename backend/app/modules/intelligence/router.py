@@ -12,6 +12,8 @@ from app.modules.intelligence.schemas import (
     JobMatchResponse,
     MentorChatRequest,
     MentorChatResponse,
+    MentorSessionSummaryResponse,
+    MentorSessionDetailResponse,
     JobReadinessAssessmentResponse,
     ImprovementPlanResponse,
     ImprovementPlanActionResponse,
@@ -66,9 +68,56 @@ async def chat_with_mentor(
 ) -> MentorChatResponse:
     """
     Chat with the AI Career Mentor grounded in the authenticated student's
-    academic standing, registered skills, and current campus placement drives.
+    academic standing, registered skills, applications, and campus placement drives.
     """
     return await intelligence_service.ask_career_mentor(current_user.id, request)
+
+
+@router.get("/mentor/sessions", response_model=list[MentorSessionSummaryResponse])
+async def list_mentor_sessions(
+    current_user: RequireStudent,
+    intelligence_service: IntelligenceServiceDep,
+) -> list[MentorSessionSummaryResponse]:
+    """
+    List all chat sessions and conversation history summaries for the authenticated student.
+    """
+    return await intelligence_service.list_mentor_sessions(current_user.id)
+
+
+@router.post("/mentor/sessions", response_model=MentorSessionDetailResponse)
+async def create_mentor_session(
+    current_user: RequireStudent,
+    intelligence_service: IntelligenceServiceDep,
+) -> MentorSessionDetailResponse:
+    """
+    Start a fresh, clean chat session.
+    """
+    return await intelligence_service.create_new_mentor_session(current_user.id)
+
+
+@router.get("/mentor/sessions/{session_id}", response_model=MentorSessionDetailResponse)
+async def get_mentor_session(
+    session_id: int,
+    current_user: RequireStudent,
+    intelligence_service: IntelligenceServiceDep,
+) -> MentorSessionDetailResponse:
+    """
+    Retrieve full message history for a specific chat session.
+    """
+    return await intelligence_service.get_mentor_session_detail(current_user.id, session_id)
+
+
+@router.delete("/mentor/sessions/{session_id}")
+async def delete_mentor_session(
+    session_id: int,
+    current_user: RequireStudent,
+    intelligence_service: IntelligenceServiceDep,
+) -> dict:
+    """
+    Delete a specific chat session and all its messages.
+    """
+    return await intelligence_service.delete_mentor_session(current_user.id, session_id)
+
 
 
 @router.get("/jobs/{job_id}/readiness", response_model=JobReadinessAssessmentResponse)

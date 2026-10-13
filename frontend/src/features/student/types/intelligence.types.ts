@@ -58,10 +58,39 @@ export interface JobMatchResponse {
 export interface ChatMessage {
   role: 'user' | 'model' | 'assistant';
   content: string;
+  model_used?: string;
+  created_at?: string;
+}
+
+export interface MentorMessageItem {
+  id: number;
+  session_id: number;
+  role: 'user' | 'model';
+  content: string;
+  model_used?: string | null;
+  created_at: string;
+}
+
+export interface MentorSessionSummary {
+  id: number;
+  title: string;
+  message_count: number;
+  last_message_preview?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MentorSessionDetail {
+  id: number;
+  title: string;
+  messages: MentorMessageItem[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MentorChatRequest {
   message: string;
+  session_id?: number | null;
   history?: ChatMessage[];
 }
 
@@ -72,12 +101,17 @@ export interface MentorContextSummary {
   skills_count: number;
   top_skills: string[];
   active_campus_jobs_count: number;
+  applied_jobs_count?: number;
+  active_applications_count?: number;
+  is_placed?: boolean;
+  resumes_count?: number;
 }
 
 export interface MentorChatResponse {
   response: string;
   grounded_context: MentorContextSummary;
   model_used: string;
+  session_id?: number | null;
 }
 
 export interface SkillEvidenceItem {
